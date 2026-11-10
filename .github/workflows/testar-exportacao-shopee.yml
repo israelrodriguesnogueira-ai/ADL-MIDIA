@@ -2,6 +2,8 @@ name: Validar exportacao Estudio Shopee
 on:
   push:
     branches: [feature/video-ai-integration-prep]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 jobs:
   exportacao:
