@@ -1,30 +1,46 @@
 # ADL Mídia
 
-Projeto web de criação e produção de vídeos curtos para YouTube Shorts e redes sociais.
+Estúdio web de planejamento e geração experimental de vídeos curtos em português.
 
-## Objetivos
-- Roteiros em português brasileiro, com temas de fé, superação, automotivo e curiosidades
-- Formato vertical 9:16
-- Imagens de fundo locais e legendas
-- Pré-visualização e exportação de vídeo
-- Narração e trilha sonora quando houver recursos e licenças adequados
+## Código encontrado
+- `index.html`: painel de projetos com armazenamento local e exportação de roteiros
+- `gerador.html`: geração de vídeo vertical em canvas, até seis cenas, imagem de fundo local, exportação MP4/WebM conforme suporte do navegador
+- Não há integração de voz, música ou publicação automática nesta versão
 
-## Infraestrutura verificada em 10/11/2026
-- Repositório GitHub: `israelrodriguesnogueira-ai/ADL-MIDIA`
-- Aplicativo Cloudflare Workers e Pages instalado com acesso aos repositórios
-- Aplicação `adl-midia` aparece no painel Cloudflare, com endereço `https://adl-midia.israelrodriguesnogueira.workers.dev`
-- O painel mostra uma referência a uma alteração para permitir imagem de fundo local
-- Um vídeo de demonstração do gerador foi apresentado pelo proprietário
+## Implantação
+A Cloudflare indica uma aplicação `adl-midia`, conectada à branch `main`, com comando `npx wrangler deploy`. É necessário verificar o build e a compatibilidade antes de atualizar a produção. **Não publicar a branch de desenvolvimento sem testar.**
 
-## Atenção: origem do código de produção pendente
-O repositório `ADL-MIDIA`, na branch principal consultada em 10/11/2026, não possui ainda o código-fonte da interface. Portanto, **não presumir** que a aplicação atualmente publicada na Cloudflare utiliza esta branch ou este repositório como origem.
+## Melhorias em desenvolvimento
+- Título do projeto visível no vídeo exportado
+- Testar navegadores móveis e desktop
+- Verificar suporte e resultado da exportação MP4/WebM
+- Planejar legendas, narração e trilhas com direitos de uso
 
-Antes de qualquer implantação:
-1. Conferir em Cloudflare > Workers & Pages > adl-midia > Settings/Builds & deployments o repositório, branch e comando de build associados.
-2. Identificar e preservar a versão que está funcionando.
-3. Obter os arquivos de origem reais e executar testes locais.
-4. Implementar melhorias incrementais e validar exportação 9:16.
-5. Publicar somente após confirmar a integração correta e o resultado dos testes.
+## Teste manual
+1. Abrir `gerador.html` em navegador que suporte MediaRecorder e canvas.captureStream
+2. Alterar título e frases; escolher imagem de fundo opcional
+3. Gerar vídeo, conferir título, frases e enquadramento vertical
+4. Confirmar duração, reprodução, áudio ausente e extensão real do arquivo
+5. Testar também sem imagem e com texto longo
 
-## Diretrizes
-Priorizar soluções gratuitas. Não contratar serviços ou alterar configurações de cobrança sem autorização. Não substituir o Worker publicado sem verificar sua origem e ter uma versão recuperável.
+## Política de custos
+Priorizar soluções gratuitas; não contratar serviços sem autorização.
+
+## Registro de implementação e testes — 10/11/2026
+
+Commit de implementação: `dfd1ae848604ac282f8620a055db655f405f945f`.
+
+Implementado em `gerador.html`:
+- Prévia do arquivo gerado com controles nativos de reprodução e `playsinline` para celulares
+- Link de download reutilizável após a geração, sem depender de abertura automática
+- Detecção de `MediaRecorder`, `canvas.captureStream` e formatos MP4/WebM disponíveis
+- Mensagens para navegadores incompatíveis, gravações interrompidas, arquivos vazios e falha de reprodução
+- Layout responsivo e controles com tamanho apropriado para toque
+- Liberação do fluxo de mídia e do endereço temporário do vídeo
+
+Verificações automatizadas concluídas:
+- Leitura da versão gravada no GitHub: OK
+- Análise sintática do JavaScript pelo mecanismo V8: OK
+- Presença de player, download, controles de erro e layout vertical: OK
+
+**Ainda não verificado:** geração real de MP4/WebM, duração e reprodução em Chrome Android, Safari iOS e outros navegadores. A publicação em produção depende desses testes funcionais.
