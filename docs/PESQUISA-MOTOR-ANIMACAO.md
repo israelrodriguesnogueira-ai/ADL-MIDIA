@@ -21,3 +21,9 @@
 
 ## Pendências
 - Licenças específicas dos modelos/weights; inventário de hardware; provedor de execução; custo e limite; teste real de geração; aprovação do usuário antes de despesa.
+
+## Verificação adicional de fontes oficiais — 2026-11-10
+- **HunyuanVideo-1.5:** licença Tencent Hunyuan Community License Agreement, não Apache/MIT. Território autorizado exclui União Europeia, Reino Unido e Coreia do Sul; Brasil está dentro do território. Há condições de distribuição, divulgação do prestador efetivo e uso comercial; revisar os termos antes de disponibilizar a terceiros. Fonte: https://github.com/Tencent-Hunyuan/HunyuanVideo-1.5/blob/main/LICENSE
+- **LTX-Video antigo:** repositório oficial informa que LTX-2.5 substitui LTX-Video 0.9.x e LTX-2 para projetos novos. Licença Apache-2.0 do **código antigo** não significa licença irrestrita dos **pesos** atuais. Fonte: https://github.com/Lightricks/LTX-Video
+- **LTX Desktop:** documentação recomenda 24 GB VRAM NVIDIA, 32 GB RAM e pelo menos 100 GB de disco para geração local. Fonte: https://github.com/Lightricks/LTX-Desktop
+- **Decisão operacional:** não instalar dependências de GPU em GitHub Pages/Cloudflare Pages, não publicar fotos do produto nem chaves no repositório, não contratar GPU sem autorização. O próximo teste é executar o adaptador e testes locais, depois testar inferência real somente em ambiente compatível.
