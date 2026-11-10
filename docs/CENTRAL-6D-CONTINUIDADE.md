@@ -30,3 +30,9 @@ Ao iniciar nova conversa, consultar este checkpoint e o código atual, verificar
 - Diferenciar rigorosamente **proposto**, **implementado**, **testado** e **publicado**. Não descrever tarefas agendadas como execução contínua de desenvolvimento sem evidência.
 - Prioridade operacional: vídeo de vestido Shopee de 15 segundos, preservando o produto original (costas fechadas, laço do cinto atrás e fenda frontal), movimento contínuo, realismo e áudio com presença.
 - Próxima etapa verificável: inspecionar o gerador atual, elaborar melhoria incremental de áudio/exportação e validar em ambiente de teste antes de alterar o fluxo principal; avaliar motor de vídeo realista aberto separadamente, considerando custo de computação.
+
+## Esclarecimento sobre investimentos (2026-11-10, 18:59 BRT)
+- A expressão **sem despesas não aprovadas** não significa proibição permanente de investimentos. Priorizar recursos próprios, gratuitos e abertos, mas apresentar opções pagas quando houver vantagem técnica ou econômica demonstrável.
+- Antes de qualquer contratação, informar custo inicial, custo recorrente, limites, riscos, alternativa gratuita e benefício esperado. A decisão e autorização do gasto pertencem ao responsável pelo projeto.
+- Resultados verificáveis significam registrar o que foi implementado, o que foi realmente testado e o que permanece pendente; uma gravação no GitHub, isoladamente, não prova funcionamento no navegador.
+- Em 10/11 foi criado `experimentos/trilha-original.js` como módulo experimental de áudio; ainda não integrado nem testado em navegador.
