@@ -1,0 +1,20 @@
+name: Validar exportacao Estudio Shopee
+on:
+  push:
+    branches: [feature/video-ai-integration-prep]
+  workflow_dispatch:
+jobs:
+  exportacao:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Instalar navegador de teste
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+      - name: Testar video vertical
+        run: node tests/exportacao-shopee.cjs
