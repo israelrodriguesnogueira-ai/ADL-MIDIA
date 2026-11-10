@@ -26,7 +26,7 @@ jobs:
         run: |
           FILE=$(find test-output -type f | head -1)
           ffprobe -v error -show_entries format=duration -show_entries stream=width,height,codec_name -of json "$FILE"
-          DURATION=$(ffprobe -v error -select_streams v:0 -show_entries packet=pts_time -of csv=p=0 "$FILE" | tail -1)
+          DURATION=$(ffprobe -v error -select_streams v:0 -show_entries packet=pts_time -of csv=p=0 "$FILE" | tail -1 | tr -d ',')
           python3 -c 'import sys; d=float(sys.argv[1]); assert 14 <= d <= 17, f"duracao inesperada: {d}"' "$DURATION"
           WIDTH=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 "$FILE")
           HEIGHT=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "$FILE")
