@@ -1,0 +1,18 @@
+name: Verificar contrato de video I2V
+on:
+  push:
+    paths:
+      - "integracoes/video-i2v-adapter.mjs"
+      - "testes/video-i2v-adapter.test.mjs"
+      - ".github/workflows/test-video-i2v.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Executar testes do adaptador sem GPU nem API externa
+        run: node --version && node --test testes/video-i2v-adapter.test.mjs
