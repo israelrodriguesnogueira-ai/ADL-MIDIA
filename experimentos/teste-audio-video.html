@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ADL Mídia | Teste isolado de áudio e vídeo</title>
+<style>body{font:16px system-ui;max-width:650px;margin:auto;padding:20px;background:#101827;color:white}button{padding:12px;border-radius:8px;border:0;background:#8bc5ff;font-weight:700}button:disabled{opacity:.5}canvas{width:180px;max-width:100%;display:block;margin:16px auto}video{width:240px;max-width:100%;display:block;margin:12px auto}p{line-height:1.5}a{color:#8bc5ff}</style>
+<h1>Teste experimental: vídeo + trilha original</h1>
+<p>Este teste isolado gera um vídeo vertical de 6 segundos com animação geométrica e áudio sintetizado. Não gera pessoas ou imagens cinematográficas. Não modifica o gerador principal.</p>
+<p><a href="../gerador.html">Voltar ao gerador principal</a></p>
+<button id="start">Gerar teste com áudio</button><p id="status" role="status">Aguardando início.</p>
+<canvas id="screen" width="540" height="960"></canvas>
+<video id="preview" controls playsinline></video><p id="download"></p>
+<script type="module">
+import { createOriginalSoundtrack } from "./trilha-original.js";
+const canvas=document.getElementById("screen"), ctx=canvas.getContext("2d");
+const button=document.getElementById("start"), status=document.getElementById("status");
+const preview=document.getElementById("preview"), download=document.getElementById("download");
+let lastUrl=null;
+function draw(progress){
+  const grad=ctx.createLinearGradient(0,0,540,960);
+  grad.addColorStop(0,"#142b50");grad.addColorStop(1,"#09152b");
+  ctx.fillStyle=grad;ctx.fillRect(0,0,540,960);
+  ctx.beginPath();ctx.arc(270,420,100+80*progress,0,Math.PI*2);
+  ctx.fillStyle="#8bc5ff";ctx.fill();
+  ctx.fillStyle="white";ctx.font="bold 40px system-ui";ctx.textAlign="center";
+  ctx.fillText("ADL MÍDIA",270,180);ctx.font="28px system-ui";
+  ctx.fillText("Teste de áudio original",270,750);
+}
+draw(0);
+button.onclick=async()=>{
+  if(!window.MediaRecorder||!canvas.captureStream){status.textContent="Este navegador não suporta a captura de vídeo.";return;}
+  button.disabled=true;download.textContent="";
+  let soundtrack,stream,recorder;
+  try{
+    const types=["video/mp4;codecs=avc1.42E01E,mp4a.40.2","video/mp4","video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm"];
+    const mime=types.find(t=>MediaRecorder.isTypeSupported(t));
+    if(!mime)throw Error("Nenhum formato de gravação disponível.");
+    soundtrack=createOriginalSoundtrack({durationSeconds:6,volume:0.12});
+    const videoStream=canvas.captureStream(15);
+    stream=new MediaStream([...videoStream.getVideoTracks(),...soundtrack.stream.getAudioTracks()]);
+    const chunks=[];
+    recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:1800000});
+    recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
+    const stopped=new Promise((resolve,reject)=>{recorder.onstop=resolve;recorder.onerror=()=>reject(Error("Falha na gravação"))});
+    await soundtrack.start();recorder.start(500);
+    const start=performance.now();
+    await new Promise(resolve=>{function frame(now){const elapsed=Math.min(now-start,6000);draw(elapsed/6000);status.textContent="Gravando "+Math.round(elapsed/60)+"%";if(elapsed<6000)requestAnimationFrame(frame);else resolve()}requestAnimationFrame(frame)});
+    recorder.stop();await stopped;
+    const blob=new Blob(chunks,{type:recorder.mimeType});
+    if(blob.size<1000)throw Error("Arquivo de saída vazio.");
+    if(lastUrl)URL.revokeObjectURL(lastUrl);
+    lastUrl=URL.createObjectURL(blob);preview.src=lastUrl;
+    const a=document.createElement("a");a.href=lastUrl;a.download="adl-midia-teste-audio."+(recorder.mimeType.startsWith("video/mp4")?"mp4":"webm");a.textContent="Baixar vídeo de teste";download.append(a);
+    status.textContent="Arquivo criado ("+Math.round(blob.size/1024)+" KB). Ouça e confira se há áudio e vídeo; a presença das faixas ainda precisa ser validada no arquivo exportado.";
+  }catch(error){status.textContent="Erro: "+error.message;if(recorder&&recorder.state==="recording")recorder.stop()}
+  finally{if(stream)stream.getTracks().forEach(t=>t.stop());if(soundtrack)await soundtrack.stop().catch(()=>{});button.disabled=false;}
+};
+</script></html>
