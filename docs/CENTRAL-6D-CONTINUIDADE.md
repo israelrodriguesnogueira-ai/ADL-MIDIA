@@ -22,3 +22,11 @@ Registro de continuidade de projetos. Não é transcrição integral do ChatGPT 
 
 ## Procedimento de retomada
 Ao iniciar nova conversa, consultar este checkpoint e o código atual, verificar alterações recentes e confirmar o próximo passo. Atualizar o checkpoint após cada etapa concluída. Este processo é manual até ser automatizado e não substitui o histórico original do chat.
+
+## Diretriz aprovada — criação evolutiva (2026-11-10)
+- Priorizar módulos próprios, reutilização responsável de código aberto e aperfeiçoamento incremental, respeitando licenças e atribuições exigidas.
+- Antes de propor gastos, avaliar soluções gratuitas e infraestrutura existente; nenhum serviço pago sem autorização expressa.
+- A autonomia autorizada abrange pesquisa, planejamento, documentação, código e testes seguros no escopo dos projetos; operações destrutivas, divulgação de dados, publicação comercial e despesas exigem validação específica.
+- Diferenciar rigorosamente **proposto**, **implementado**, **testado** e **publicado**. Não descrever tarefas agendadas como execução contínua de desenvolvimento sem evidência.
+- Prioridade operacional: vídeo de vestido Shopee de 15 segundos, preservando o produto original (costas fechadas, laço do cinto atrás e fenda frontal), movimento contínuo, realismo e áudio com presença.
+- Próxima etapa verificável: inspecionar o gerador atual, elaborar melhoria incremental de áudio/exportação e validar em ambiente de teste antes de alterar o fluxo principal; avaliar motor de vídeo realista aberto separadamente, considerando custo de computação.
