@@ -1,0 +1,22 @@
+const {chromium}=require('playwright');
+const fs=require('fs');
+(async()=>{
+ const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+ const page=await browser.newPage({acceptDownloads:true,viewport:{width:390,height:844}});
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('file://'+process.cwd()+'/estudio-shopee.html');
+ const makeImage=async color=>page.evaluate(color=>{const c=document.createElement('canvas');c.width=540;c.height=960;const x=c.getContext('2d');x.fillStyle=color;x.fillRect(0,0,540,960);return c.toDataURL('image/png')},color);
+ const images=await Promise.all(['#cc2255','#2255cc','#22aa77'].map(makeImage));
+ const files=images.map((data,i)=>({name:'foto-'+i+'.png',mimeType:'image/png',buffer:Buffer.from(data.split(',')[1],'base64')}));
+ await page.locator('#photos').setInputFiles(files);
+ await page.waitForFunction(()=>!document.querySelector('#render').disabled);
+ const downloadPromise=page.waitForEvent('download',{timeout:35000});
+ await page.locator('#render').click();
+ const download=await downloadPromise;
+ const path=await download.path();
+ const stat=fs.statSync(path);
+ if(stat.size<10000)throw Error('Arquivo de video muito pequeno: '+stat.size);
+ if(errors.length)throw Error('Erros JavaScript: '+errors.join('; '));
+ console.log('EXPORTACAO OK:',download.suggestedFilename(),'bytes:',stat.size);
+ await browser.close();
+})().catch(e=>{console.error(e);process.exit(1)});
