@@ -20,6 +20,8 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Testar video vertical
         run: node tests/exportacao-shopee.cjs
+      - name: Instalar ffprobe
+        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg
       - name: Verificar duracao e dimensoes com ffprobe
         run: |
           FILE=$(find test-output -type f | head -1)
