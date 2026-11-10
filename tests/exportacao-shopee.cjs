@@ -14,7 +14,7 @@ const fs=require('fs');
  await page.locator('#render').click();
  const download=await downloadPromise;
  const path=await download.path();
- const stat=fs.statSync(path);
+ fs.mkdirSync('test-output',{recursive:true});const saved='test-output/'+download.suggestedFilename();fs.copyFileSync(path,saved);const stat=fs.statSync(saved);
  if(stat.size<10000)throw Error('Arquivo de video muito pequeno: '+stat.size);
  if(errors.length)throw Error('Erros JavaScript: '+errors.join('; '));
  console.log('EXPORTACAO OK:',download.suggestedFilename(),'bytes:',stat.size);
