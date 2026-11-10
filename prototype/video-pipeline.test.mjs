@@ -1,0 +1,10 @@
+import assert from "node:assert/strict";
+import { buildTimeline, toSrt, captionsFromSpeech } from "./video-pipeline.mjs";
+const scenes = buildTimeline([{text:"Recomeçar é possível.",duration:3,imageQuery:"sunrise"},{text:"Perdoar liberta.",duration:2}],{transitionSeconds:0.4});
+assert.equal(scenes.length,2);
+assert.equal(scenes[1].start,2.6);
+assert.match(toSrt(scenes),/00:00:02,600 --> 00:00:04,600/);
+assert.match(captionsFromSpeech([{text:"Olá",start:0,end:0.8}]),/00:00:00,800/);
+assert.throws(()=>buildTimeline([{text:"",duration:2}]));
+assert.throws(()=>captionsFromSpeech([{text:"a",start:2,end:1}]));
+console.log("Testes do pipeline aprovados");
