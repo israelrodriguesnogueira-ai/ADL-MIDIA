@@ -36,3 +36,12 @@ Ao iniciar nova conversa, consultar este checkpoint e o código atual, verificar
 - Antes de qualquer contratação, informar custo inicial, custo recorrente, limites, riscos, alternativa gratuita e benefício esperado. A decisão e autorização do gasto pertencem ao responsável pelo projeto.
 - Resultados verificáveis significam registrar o que foi implementado, o que foi realmente testado e o que permanece pendente; uma gravação no GitHub, isoladamente, não prova funcionamento no navegador.
 - Em 10/11 foi criado `experimentos/trilha-original.js` como módulo experimental de áudio; ainda não integrado nem testado em navegador.
+
+## Diretriz de continuidade evolutiva — animação de personagem (2026-11-10)
+- A prioridade atual não é produzir mais apresentações de fotos: é implementar ou integrar um **motor de vídeo realista** que anime uma modelo virtual usando o vestido preto **fiel às imagens originais**, com movimentos corporais naturais como no demonstrativo `1000500932.mp4`.
+- Requisitos de produto: 15 segundos, vertical; modelo caminhando, mudando postura, girando e mostrando frente, lateral e costas; costas fechadas, fenda frontal e laço traseiro preservados; áudio com presença profissional.
+- **Critério de não regressão:** não apresentar zoom, pan, slideshow ou animação geométrica como substituto de atuação realista. Tais recursos continuam úteis para testes de exportação, mas não satisfazem o vídeo comercial desejado.
+- **Critério de verificação:** separar pesquisa, protótipo, integração, teste visual com as fotos reais, exportação validada e aprovação comercial. Nenhuma fase pode ser descrita como concluída sem evidência.
+- **Motor ainda não implementado:** investigar modelos de vídeo aberto e serviços de inferência; estimar necessidade de GPU, licença, limitações de uso comercial, proteção de imagens e custos antes de qualquer decisão.
+- A autonomia autorizada permite pesquisa, documentação, desenvolvimento e testes seguros; **não permite despesas sem autorização expressa**.
+- As estimativas de esforço de investigação (30–60 min), integração experimental (2–4 h) e testes (4–8 h) são hipóteses de planejamento, não execução contínua garantida nem prazo fechado.
