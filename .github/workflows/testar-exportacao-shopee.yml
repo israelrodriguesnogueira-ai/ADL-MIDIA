@@ -20,3 +20,19 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Testar video vertical
         run: node tests/exportacao-shopee.cjs
+      - name: Verificar duracao e dimensoes com ffprobe
+        run: |
+          FILE=$(find test-output -type f | head -1)
+          ffprobe -v error -show_entries format=duration -show_entries stream=width,height,codec_name -of json "$FILE"
+          DURATION=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$FILE")
+          python3 -c 'import sys; d=float(sys.argv[1]); assert 14 <= d <= 17, f"duracao inesperada: {d}"' "$DURATION"
+          WIDTH=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 "$FILE")
+          HEIGHT=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "$FILE")
+          test "$WIDTH" = 540 && test "$HEIGHT" = 960
+      - name: Disponibilizar video de teste
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-teste-shopee
+          path: test-output/*
+          if-no-files-found: ignore
