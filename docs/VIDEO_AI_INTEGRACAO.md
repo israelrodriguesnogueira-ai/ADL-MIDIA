@@ -25,3 +25,25 @@ Gerar anúncio vertical de 15 segundos (9:16) do vestido curto de alfaiataria pr
 - Frente, lateral e costas apresentadas com transições naturais, sem deformações.
 - Trilha com licença adequada e volume equilibrado, se aprovada.
 - Falhas e custos exibidos com clareza antes da execução.
+
+
+## Referência visual aprovada em 10/11/2026
+O usuário enviou um vídeo de referência de movimento (arquivo recebido na conversa) e confirmou que esse é o padrão desejado de linguagem visual e qualidade comercial. **A referência serve para movimento e cinematografia, não para trocar a peça anunciada.**
+
+### Critérios obrigatórios de aceite do anúncio
+- Duração-alvo de 15 segundos, vertical 9:16.
+- Modelo com movimento corporal convincente, mudança natural de postura e dos braços, giro suave para mostrar frente, lateral e costas.
+- Alternância equilibrada entre corpo inteiro, plano médio e detalhes; iluminação com profundidade realista.
+- Vestido preto original fiel às fotos fornecidas: alças finas, amarração na cintura, fenda frontal lateral, costas fechadas com zíper e sem fenda traseira.
+- Não adicionar mangas, babados, decotes diferentes, comprimento alterado ou detalhes inventados.
+- Proibir distorções entre quadros: mãos, corpo, costuras, tecido e cenário devem manter continuidade.
+- Áudio comercial discreto e licenciado/original; evitar trilhas genéricas vazias ou músicas de terceiros sem direitos.
+- Validar exportação e reprodução no celular; registrar limitações de ferramentas gratuitas antes de prometer geração realista.
+
+### Plano temporal sugerido (ajustável)
+- 0–4 s: frente, movimento suave e destaque do caimento.
+- 4–8 s: giro lateral, detalhe da amarração e fenda frontal.
+- 8–12 s: giro mostrando costas e zíper, sem fenda traseira.
+- 12–15 s: retorno a pose de destaque e encerramento limpo.
+
+**Situação:** critérios registrados; integração de IA para movimento realista ainda não implementada. Nenhum gasto autorizado.
