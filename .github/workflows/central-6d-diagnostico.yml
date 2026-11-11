@@ -11,25 +11,10 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - name: Verificar estrutura e executar testes locais
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p relatorio
-          {
-            echo "# Central 6D - diagnostico automatico"
-            echo
-            echo "Execucao UTC: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-            echo "Commit: ${GITHUB_SHA}"
-            echo
-            echo "## Arquivos essenciais"
-            for f in index.html gerador.html integracoes/video-i2v-adapter.mjs testes/video-i2v-adapter.test.mjs; do
-              if test -f "$f"; then echo "- OK: $f"; else echo "- AUSENTE: $f"; fi
-            done
-            echo
-            echo "## Testes do adaptador I2V"
-          } > relatorio/diagnostico.md
-          node --test testes/video-i2v-adapter.test.mjs 2>&1 | tee -a relatorio/diagnostico.md
+      - name: Executar operadores do Aion
+        env:
+          AION_MONITORAR_SITE: "1"
+        run: node scripts/aion-supervisor.mjs relatorio/diagnostico.md
       - name: Publicar resumo da execucao
         if: always()
         shell: bash
