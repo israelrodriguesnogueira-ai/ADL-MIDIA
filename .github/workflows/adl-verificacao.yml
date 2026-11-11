@@ -1,0 +1,18 @@
+name: ADL - Verificacao operacional
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '15 19 * * *'
+permissions:
+  contents: read
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validar registro
+        run: python3 adl-operacional/verificar_estado.py
+      - name: Resumo de continuidade
+        run: |
+          echo '## ADL - Estado verificado' >> "$GITHUB_STEP_SUMMARY"
+          python3 adl-operacional/verificar_estado.py >> "$GITHUB_STEP_SUMMARY"

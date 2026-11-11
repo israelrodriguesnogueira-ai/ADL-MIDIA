@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-11-10",
+  "mode": "registro_versionado_sem_execucao_continua",
+  "projects": {
+    "video_shopee": {
+      "status": "bloqueado_motor_ia",
+      "duration_seconds": 15,
+      "format": "9:16",
+      "constraints": [
+        "vestido real preto",
+        "costas fechadas sem fenda",
+        "fenda frontal",
+        "cinto com laco atras",
+        "movimento continuo"
+      ],
+      "next_action": "validar provedor image-to-video e custos antes de integrar",
+      "render_running": false
+    },
+    "memoria_operacional": {
+      "status": "prototipo_registro_github",
+      "next_action": "testar leitura e atualizacao versionada"
+    },
+    "continuidade_ativa": {
+      "status": "prototipo_monitoramento",
+      "next_action": "validar workflow e notificacoes"
+    }
+  },
+  "last_verified": {
+    "github_branch": "feature/teste-audio-video-20261110",
+    "cloudflare_deployment": "nao_verificado",
+    "claude_keys": "nao_verificadas",
+    "video_engine": "nao_conectado"
+  }
+}
