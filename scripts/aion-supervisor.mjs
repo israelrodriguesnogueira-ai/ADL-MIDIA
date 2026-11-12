@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -62,8 +62,48 @@ const operators = {
     await execute(process.execPath, ["--test", "testes/ion-controle-dono.test.mjs"]);
     return waiting("Testes simulados aprovados. Falta conectar a autenticação online.");
   },
-  "Financeiro": async () =>
-    waiting("Aguardando fontes de mercado e dados autorizados de receitas e custos."),
+  "Financeiro": async () => {
+    if (!env.AION_FECHAMENTOS_IBOV) {
+      return waiting("Fornecer um JSON com os fechamentos oficiais do Ibovespa: [{data, pontos}].");
+    }
+    const dados = JSON.parse(await readFile(resolve(env.AION_FECHAMENTOS_IBOV), "utf8"));
+    if (!Array.isArray(dados)) throw new TypeError("Esperada uma lista de fechamentos.");
+    const fechamentos = new Map();
+    for (const { data, pontos } of dados) {
+      if (typeof data !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(data) ||
+          !Number.isFinite(Date.parse(data)) || new Date(data).toISOString().slice(0, 10) !== data ||
+          !Number.isFinite(pontos) || pontos <= 0) {
+        throw new TypeError("Fechamento inválido.");
+      }
+      if (fechamentos.has(data) && fechamentos.get(data) !== pontos) {
+        throw new Error("Há fechamentos conflitantes para o mesmo pregão.");
+      }
+      fechamentos.set(data, pontos);
+    }
+    const datasDoTeste = [
+      "2026-11-12", "2026-11-13", "2026-11-16",
+      "2026-11-17", "2026-11-18", "2026-11-19",
+    ];
+    const faltantes = datasDoTeste.filter(data => !fechamentos.has(data));
+    if (faltantes.length) {
+      return waiting(`Ibovespa simulado: faltam fechamentos de ${faltantes.join(", ")}.`);
+    }
+    const periodo = datasDoTeste.map(data => [data, fechamentos.get(data)]);
+    const [[entrada, inicial]] = periodo;
+    const [saida, final] = periodo.at(-1);
+    let pico = inicial;
+    let queda = 0;
+    for (const [, pontos] of periodo) {
+      pico = Math.max(pico, pontos);
+      queda = Math.max(queda, (pico - pontos) / pico);
+    }
+    const retorno = (final - inicial) / inicial;
+    const percentual = valor => valor.toLocaleString("pt-BR", {
+      style: "percent", minimumFractionDigits: 2, maximumFractionDigits: 2,
+    });
+    const resultado = retorno > 0 ? "confirmada" : retorno < 0 ? "contrariada" : "inconclusiva";
+    return ok(`Simulação do Ibovespa de ${entrada} a ${saida}: hipótese ${resultado}, retorno ${percentual(retorno)} contra caixa de 0%, queda máxima entre fechamentos de ${percentual(queda)}.`);
+  },
   "Monitoramento": async () => {
     if (env.AION_MONITORAR_SITE !== "1") {
       return waiting("A consulta ao endereço público está desativada nesta execução.");
