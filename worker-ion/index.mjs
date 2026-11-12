@@ -3,7 +3,7 @@ import { protectOwnerRoute } from "../integracoes/ion-controle-dono.mjs";
 export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
-    if (path !== "/verificar-acesso") {
+    if (path !== "/" && path !== "/verificar-acesso") {
       return new Response("Rota indisponível.", { status: 404 });
     }
     if (request.method !== "GET") {
@@ -12,12 +12,14 @@ export default {
 
     const ownerEmail = env.ION_OWNER_EMAIL?.trim().toLowerCase();
     const audience = env.ION_GOOGLE_CLIENT_ID?.trim();
-    if (!ownerEmail?.endsWith("@gmail.com") || !audience) {
+    if (!ownerEmail?.endsWith("@gmail.com") || !/^[a-z0-9-]+\.apps\.googleusercontent\.com$/.test(audience ?? "")) {
       return new Response("Validação ainda indisponível.", {
         status: 503,
         headers: { "Cache-Control": "no-store" },
       });
     }
+
+    if (path === "/") return loginPage(audience);
 
     const verifyOwner = protectOwnerRoute({
       owner: { issuer: GOOGLE_ISSUER, subject: ownerEmail },
@@ -76,4 +78,54 @@ async function verifyGoogleIdentity(request, audience) {
     encoder.encode(`${encodedHeader}.${encodedClaims}`));
 
   return valid ? { issuer: GOOGLE_ISSUER, subject: claims.email.toLowerCase() } : null;
+}
+
+function loginPage(clientId) {
+  return new Response(`<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ion Validacao</title>
+<main>
+  <h1>Validar acesso ao Ion</h1>
+  <div id="google-login"></div>
+  <p id="status" role="status">Entre com sua Conta Google.</p>
+</main>
+<script src="https://accounts.google.com/gsi/client" defer></script>
+<script>
+  const status = document.getElementById("status");
+  window.addEventListener("load", () => {
+    if (!window.google?.accounts?.id) {
+      status.textContent = "Não foi possível carregar o login do Google.";
+      return;
+    }
+    google.accounts.id.initialize({
+      client_id: "${clientId}",
+      callback: async ({ credential }) => {
+        status.textContent = "Verificando acesso…";
+        try {
+          const result = await fetch("/verificar-acesso", {
+            headers: { Authorization: "Bearer " + credential },
+            cache: "no-store",
+          });
+          status.textContent = result.ok ? "Acesso do proprietário confirmado."
+            : result.status === 403 ? "Esta conta não tem acesso ao Ion."
+            : "Não foi possível validar o acesso.";
+        } catch {
+          status.textContent = "Não foi possível conectar ao Ion.";
+        }
+      },
+    });
+    google.accounts.id.renderButton(document.getElementById("google-login"), {
+      theme: "outline", size: "large", text: "signin_with",
+    });
+  });
+</script>
+</html>`, {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+      "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+    },
+  });
 }
