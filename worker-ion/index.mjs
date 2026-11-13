@@ -44,6 +44,19 @@ function decodeBase64Url(value) {
     character => character.charCodeAt(0));
 }
 
+async function fetchGoogleKeys() {
+  const fetchKeys = () => fetch(GOOGLE_KEYS_URL, {
+    redirect: "error",
+    signal: AbortSignal.timeout(2500),
+  });
+  try {
+    return await fetchKeys();
+  } catch {
+    // Retry the same trusted endpoint once if the connection fails.
+    return fetchKeys();
+  }
+}
+
 async function verifyGoogleIdentity(request, audience) {
   const authorization = request.headers.get("Authorization") ?? "";
   if (authorization.length > 8192) return null;
@@ -70,9 +83,13 @@ async function verifyGoogleIdentity(request, audience) {
 
   let response;
   try {
-    response = await fetch(GOOGLE_KEYS_URL, { redirect: "error" });
-  } catch {
-    console.warn(JSON.stringify({ event: "ion.google_keys_unavailable", reason: "network_failure" }));
+    response = await fetchGoogleKeys();
+  } catch (error) {
+    console.warn(JSON.stringify({
+      event: "ion.google_keys_unavailable",
+      reason: "network_failure",
+      errorType: error?.name === "TimeoutError" ? "timeout" : error?.name === "TypeError" ? "fetch_type_error" : "other",
+    }));
     throw new Error("Chaves do Google indisponíveis.");
   }
   if (!response.ok) {
