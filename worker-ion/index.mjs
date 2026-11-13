@@ -109,8 +109,10 @@ function loginPage(clientId) {
             cache: "no-store",
           });
           status.textContent = result.ok ? "Acesso do proprietário confirmado."
-            : result.status === 403 ? "Esta conta não tem acesso ao Ion."
-            : "Não foi possível validar o acesso.";
+            : result.status === 401 ? "Sessão Google inválida ou expirada (401). Tente entrar novamente."
+            : result.status === 403 ? "Conta Google diferente da conta proprietária configurada (403)."
+            : result.status === 503 ? "Serviço de validação indisponível ou configuração incompleta (503)."
+            : "Falha na validação. Código HTTP: " + result.status + ".";
         } catch {
           status.textContent = "Não foi possível conectar ao Ion.";
         }
