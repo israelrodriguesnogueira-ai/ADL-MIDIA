@@ -13,6 +13,7 @@ export default {
     const ownerEmail = env.ION_OWNER_EMAIL?.trim().toLowerCase();
     const audience = env.ION_GOOGLE_CLIENT_ID?.trim();
     if (!ownerEmail?.endsWith("@gmail.com") || !/^[a-z0-9-]+\.apps\.googleusercontent\.com$/.test(audience ?? "")) {
+      console.warn(JSON.stringify({ event: "ion.auth_configuration_invalid", ownerEmailConfigured: Boolean(ownerEmail?.endsWith("@gmail.com")), googleClientIdConfigured: /^[a-z0-9-]+\.apps\.googleusercontent\.com$/.test(audience ?? "") }));
       return new Response("Validação ainda indisponível.", {
         status: 503,
         headers: { "Cache-Control": "no-store" },
