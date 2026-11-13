@@ -17,8 +17,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: dcedad52c4d58ad2458d1b6aa70fb716
-          CAPTURE_SECONDS: ${{ github.event_name == 'workflow_dispatch' && '180' || '40' }}
-          WRANGLER_SEND_METRICS: "false"
+          CAPTURE_SECONDS: ${{ github.event_name == 'workflow_dispatch' && '180' || '18' }}
         run: |
           set -euo pipefail
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
@@ -83,26 +82,84 @@ jobs:
                       print(json.dumps(output), flush=True)
           PY
 
-          env -u CLOUDFLARE_API_TOKEN npm install --prefix "$RUNNER_TEMP/ion-wrangler" --no-audit --no-fund wrangler@4.160.0
-          trap 'if [ -n "${tail_pid:-}" ]; then kill "$tail_pid" 2>/dev/null || true; fi' EXIT
-          (
-            sleep 18
-            curl -sS --max-time 10 -o /dev/null -w 'Teste sem login: HTTP %{http_code}\n' \
-              https://ion-validacao.israelrodriguesnogueira.workers.dev/verificar-acesso
-          ) &
-          tail_pid=$!
+          cat > "$RUNNER_TEMP/ion-tail.mjs" <<'JS'
+          const workerUrl = "https://ion-validacao.israelrodriguesnogueira.workers.dev/verificar-acesso";
+          const endpoint = "https://api.cloudflare.com/client/v4/accounts/" +
+            process.env.CLOUDFLARE_ACCOUNT_ID + "/workers/scripts/ion-validacao/tails";
+          const headers = {
+            Authorization: "Bearer " + process.env.CLOUDFLARE_API_TOKEN,
+            "Content-Type": "application/json",
+          };
+          async function api(url, method) {
+            return fetch(url, {
+              method, headers, redirect: "error",
+              body: method === "POST" ? JSON.stringify({ filters: [] }) : undefined,
+              signal: AbortSignal.timeout(10000),
+            });
+          }
+          const response = await api(endpoint, "POST");
+          const body = await response.json();
+          if (!response.ok || !body.success) {
+            const codes = (body.errors ?? []).map(({ code }) => code).filter(Number.isInteger);
+            console.error("API Cloudflare: HTTP " + response.status + " | códigos: " + codes.join(", "));
+            process.exit(1);
+          }
+          const { id, url } = body.result;
+          console.error("Cloudflare aceitou o token e criou a sessão de logs.");
+          try {
+            const socketUrl = new URL(url);
+            if (socketUrl.protocol !== "wss:") throw new Error("Protocolo inesperado");
+            const socket = new WebSocket(socketUrl, "trace-v1");
+            socket.binaryType = "arraybuffer";
+            await new Promise((resolve, reject) => {
+              const timer = setTimeout(() => {
+                socket.close();
+                reject(new Error("tempo de conexão excedido"));
+              }, 10000);
+              socket.addEventListener("open", () => {
+                clearTimeout(timer);
+                resolve();
+              }, { once: true });
+              socket.addEventListener("error", () => {
+                clearTimeout(timer);
+                reject(new Error("falha na conexão WebSocket"));
+              }, { once: true });
+            });
+            await new Promise((resolve, reject) => {
+              const timer = setTimeout(() => {
+                resolve();
+                socket.close();
+              }, Number(process.env.CAPTURE_SECONDS) * 1000);
+              socket.addEventListener("message", ({ data }) => {
+                if (typeof data === "string") console.log(data);
+                else if (data instanceof ArrayBuffer) console.log(Buffer.from(data).toString("utf8"));
+              });
+              socket.addEventListener("close", () => {
+                clearTimeout(timer);
+                reject(new Error("captura encerrada antes do prazo"));
+              });
+              socket.send(JSON.stringify({ debug: false }));
+              console.error("Captura conectada.");
+              setTimeout(async () => {
+                try {
+                  const probe = await fetch(workerUrl, { signal: AbortSignal.timeout(10000) });
+                  console.error("Teste sem login: HTTP " + probe.status);
+                } catch {
+                  console.error("Falha no teste sem login.");
+                }
+              }, 1500);
+            });
+          } catch {
+            console.error("A API aceitou o token, mas a captura ao vivo falhou.");
+            process.exitCode = 1;
+          } finally {
+            if (typeof id === "string" && /^[a-zA-Z0-9-]+$/.test(id)) {
+              await api(endpoint + "/" + id, "DELETE").catch(() => {});
+            }
+          }
+          JS
 
-          set +e
-          timeout --signal=INT --kill-after=5s "$CAPTURE_SECONDS" \
-            "$RUNNER_TEMP/ion-wrangler/node_modules/.bin/wrangler" tail ion-validacao --format json --method GET \
-            2>"$RUNNER_TEMP/ion-tail-errors" \
-            | python -u "$RUNNER_TEMP/ion-filter.py" | tee "$RUNNER_TEMP/ion-events"
-          result=( "${PIPESTATUS[@]}" )
-          set -e
-          if [ "${result[0]}" -ne 124 ] || [ "${result[1]}" -ne 0 ] || [ "${result[2]}" -ne 0 ]; then
-            echo "::error::A captura terminou antes do prazo. Confira a validade do token e a permissão Workers Tail Read."
-            exit 1
-          fi
+          node "$RUNNER_TEMP/ion-tail.mjs" | python -u "$RUNNER_TEMP/ion-filter.py" | tee "$RUNNER_TEMP/ion-events"
           if ! grep -q '"event": "ion.access_check_started"' "$RUNNER_TEMP/ion-events"; then
             echo "::error::Nenhum evento de validação foi recebido durante a captura."
             exit 1
