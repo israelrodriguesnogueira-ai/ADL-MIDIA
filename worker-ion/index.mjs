@@ -10,6 +10,10 @@ export default {
       return new Response("Método indisponível.", { status: 405, headers: { Allow: "GET" } });
     }
 
+    if (path === "/verificar-acesso") {
+      console.info(JSON.stringify({ event: "ion.access_check_started" }));
+    }
+
     const ownerEmail = env.ION_OWNER_EMAIL?.trim().toLowerCase();
     const audience = env.ION_GOOGLE_CLIENT_ID?.trim();
     if (!ownerEmail?.endsWith("@gmail.com") || !/^[a-z0-9-]+\.apps\.googleusercontent\.com$/.test(audience ?? "")) {
