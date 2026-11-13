@@ -149,6 +149,10 @@ function loginPage(clientId) {
   a, button { display: inline-flex; align-items: center; min-height: 44px; }
   a { color: #a8d1ff; }
   button { font: inherit; padding: 0 1rem; }
+  #comando-ion { display: grid; gap: .5rem; margin: 1.25rem 0; }
+  #pedido-ion { font: inherit; padding: .75rem; border: 1px solid #64748b; border-radius: .5rem; }
+  #comando-ion button { justify-self: start; }
+  #resposta-ion { margin: 0; }
 </style>
 <main>
   <section id="entrada">
@@ -159,6 +163,14 @@ function loginPage(clientId) {
   <section id="painel" hidden>
     <h1 id="titulo-painel" tabindex="-1">Painel do Ion</h1>
     <p>Acesso do proprietário confirmado.</p>
+    <form id="comando-ion">
+      <label for="pedido-ion">Comando para o Ion</label>
+      <input id="pedido-ion" placeholder="Ex.: Abrir o gerador de vídeo" maxlength="160"
+             aria-describedby="ajuda-ion" required>
+      <p id="ajuda-ion">Digite ou use o microfone do teclado e toque em Executar.</p>
+      <button type="submit">Executar</button>
+      <p id="resposta-ion" role="status"></p>
+    </form>
     <ul id="areas"></ul>
     <button id="sair" type="button">Sair</button>
   </section>
@@ -168,7 +180,28 @@ function loginPage(clientId) {
   const status = document.getElementById("status");
   document.getElementById("sair").addEventListener("click", () => window.location.reload());
 
+  function connectCommands(areas) {
+    const central = areas.find(area => area.nome === "Central 6D" && area.url);
+    document.getElementById("comando-ion").onsubmit = event => {
+      event.preventDefault();
+      const command = document.getElementById("pedido-ion").value
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+        .replace(/[.,!?]/g, " ").trim().replace(/\\s+/g, " ").replace(/^ion /, "");
+      const response = document.getElementById("resposta-ion");
+      if (central && /^(abra|abrir|acesse|acessar) (a )?(central 6d|adl midia)$/.test(command)) {
+        window.location.assign(central.url);
+        return;
+      }
+      if (central && /^(abra|abrir|acesse|acessar) (o )?gerador( de videos?)?$/.test(command)) {
+        window.location.assign(new URL("gerador.html", central.url).href);
+        return;
+      }
+      response.textContent = "Comandos disponíveis: Abrir a Central 6D ou Abrir o gerador de vídeo.";
+    };
+  }
+
   function showPanel(areas) {
+    connectCommands(areas);
     const list = document.getElementById("areas");
     list.replaceChildren();
     for (const area of areas) {
