@@ -151,7 +151,12 @@ function loginPage(clientId) {
   button { font: inherit; padding: 0 1rem; }
   #comando-ion { display: grid; gap: .5rem; margin: 1.25rem 0; }
   #pedido-ion { font: inherit; padding: .75rem; border: 1px solid #64748b; border-radius: .5rem; }
-  #comando-ion button { justify-self: start; }
+  #acoes-ion { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+  #acoes-ion button { border: 0; border-radius: 999px; }
+  #enviar-ion { color: #101827; background: #a8d1ff; }
+  #transito-ion { color: #e3edff; background: #243a55; }
+  #acoes-ion button:disabled { opacity: .55; }
+  #areas { margin-top: .75rem; }
   #conversa-ion { max-height: 55vh; overflow: auto; margin-bottom: .5rem; }
   #conversa-ion li p { white-space: pre-wrap; overflow-wrap: anywhere; }
   #conversa-ion .msg-user { margin-left: 12%; background: #243a55; }
@@ -172,10 +177,13 @@ function loginPage(clientId) {
       <label for="pedido-ion">Comando para o Ion</label>
       <textarea id="pedido-ion" rows="2" placeholder="Ex.: Ion, crie um vídeo educativo de trânsito" maxlength="500"
                 aria-describedby="ajuda-ion" required></textarea>
-      <p id="ajuda-ion">Digite ou use o microfone do teclado e toque em Enviar.</p>
-      <button id="enviar-ion" type="submit">Enviar</button>
+      <div id="acoes-ion">
+        <button id="enviar-ion" type="submit">Enviar</button>
+        <button id="transito-ion" type="button">Criar vídeo de trânsito</button>
+      </div>
+      <p id="ajuda-ion">Digite ou use o microfone do teclado em Português (Brasil).</p>
     </form>
-    <ul id="areas"></ul>
+    <details><summary>Áreas do Ion</summary><ul id="areas"></ul></details>
     <button id="sair" type="button">Sair</button>
   </section>
 </main>
@@ -188,6 +196,12 @@ function loginPage(clientId) {
     const central = areas.find(area => area.nome === "Central 6D" && area.url);
     const input = document.getElementById("pedido-ion");
     const send = document.getElementById("enviar-ion");
+    const form = document.getElementById("comando-ion");
+    const trafficButton = document.getElementById("transito-ion");
+    trafficButton.onclick = () => {
+      input.value = "Crie um vídeo educativo de trânsito";
+      form.requestSubmit();
+    };
     const log = document.getElementById("conversa-ion");
     function message(who, content) {
       const item = document.createElement("li");
@@ -202,7 +216,7 @@ function loginPage(clientId) {
       return { item, body };
     }
 
-    document.getElementById("comando-ion").onsubmit = async event => {
+    form.onsubmit = async event => {
       event.preventDefault();
       const request = input.value.trim();
       if (!request || send.disabled) return;
@@ -223,7 +237,13 @@ function loginPage(clientId) {
         return;
       }
       const videoRequest = /^(?:quero(?: que voce)? |(?:voce )?(?:pode|poderia|consegue) )?(?:gere|gera|gerar|faca|faz|fazer|crie|cria|criar|produza|produzir|criom|criou) (?:para mim )?(?:um )?(?:video|short)(?: vertical)?(?: para mim)?(?: (.+))?$/.exec(command);
-      if (!videoRequest) {
+      // Dictation can add words before the verb and move modifiers after the topic.
+      const trafficRequest = !scriptParts.length
+        && /\\b(?:gere|gera|gerar|faca|faz|fazer|crie|cria|criar|produza|produzir|criom|criacao)\\b/.test(command)
+        && /\\b(?:video|short)\\b/.test(command)
+        && /\\b(?:transito|seguranca viaria)\\b/.test(command)
+        && !/\\b(?:nao|sem|cancele)\\b/.test(command);
+      if (!videoRequest && !trafficRequest) {
         body.textContent = "Posso criar um vídeo de teste ou montar um vídeo com suas frases. Exemplo: Crie um vídeo para mim: O primeiro passo é difícil. Tente mais uma vez.";
         return;
       }
@@ -233,10 +253,10 @@ function loginPage(clientId) {
         body.textContent = "Escreva de uma a seis frases, com até 100 caracteres cada.";
         return;
       }
-      const topic = videoRequest[1]?.replace(/ para mim$/, "");
+      const topic = videoRequest?.[1]?.replace(/ para mim$/, "");
       let title = scenes.length ? "Vídeo com suas frases" : "Vídeo de teste: A coragem de recomeçar";
-      if (!scenes.length && topic && !/^de (teste|exemplo)$/.test(topic)) {
-        if (!/^(?:(?:educativo|educacional) )?(?:de|sobre|do|no|para o) (?:o )?(?:educacao (?:no|para o) |seguranca (?:no|do) )?transito$/.test(topic)
+      if (!scenes.length && (trafficRequest || (topic && !/^de (teste|exemplo)$/.test(topic)))) {
+        if (!trafficRequest && !/^(?:(?:educativo|educacional) )?(?:de|sobre|do|no|para o) (?:o )?(?:educacao (?:no|para o) |seguranca (?:no|do) )?transito$/.test(topic)
             && !/^(?:educativo|educacional) (?:de|sobre) seguranca viaria$/.test(topic)) {
           body.textContent = "Já posso criar um vídeo educativo de trânsito. Para outro tema, envie as frases depois de dois-pontos.";
           return;
@@ -251,7 +271,7 @@ function loginPage(clientId) {
           "Respeite a sinalização. Cuidar no trânsito protege vidas.",
         ];
       }
-      send.disabled = true;
+      send.disabled = trafficButton.disabled = true;
       body.textContent = "Gerando o vídeo experimental. Mantenha esta tela aberta.";
       try {
         const { blob, extension, sceneCount } = await renderSample(scenes, progress => {
@@ -274,7 +294,7 @@ function loginPage(clientId) {
       } catch (error) {
         body.textContent = "Não consegui exportar neste navegador. " + error.message;
       } finally {
-        send.disabled = false;
+        send.disabled = trafficButton.disabled = false;
       }
     };
   }
