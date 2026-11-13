@@ -68,8 +68,17 @@ async function verifyGoogleIdentity(request, audience) {
     return null;
   }
 
-  const response = await fetch(GOOGLE_KEYS_URL, { redirect: "error" });
-  if (!response.ok) throw new Error("Chaves do Google indisponíveis.");
+  let response;
+  try {
+    response = await fetch(GOOGLE_KEYS_URL, { redirect: "error" });
+  } catch {
+    console.warn(JSON.stringify({ event: "ion.google_keys_unavailable", reason: "network_failure" }));
+    throw new Error("Chaves do Google indisponíveis.");
+  }
+  if (!response.ok) {
+    console.warn(JSON.stringify({ event: "ion.google_keys_unavailable", reason: "http_failure", status: response.status }));
+    throw new Error("Chaves do Google indisponíveis.");
+  }
   const { keys } = await response.json();
   const jwk = keys.find(key => key.kid === header.kid && key.kty === "RSA");
   if (!jwk) return null;
