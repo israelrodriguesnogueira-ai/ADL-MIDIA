@@ -209,9 +209,11 @@ function loginPage(clientId) {
       message("Você", request);
       input.value = "";
       const { item, body } = message("Ion", "Entendendo seu pedido…");
-      const command = request.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
+      const [instruction, ...scriptParts] = request.split(":");
+      const command = instruction.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
         .toLowerCase().replace(/[.,!?]/g, " ").trim().replace(/\\s+/g, " ")
-        .replace(/^ion /, "").replace(/^por favor /, "").replace(/ por favor$/, "");
+        .replace(/^(?:ion|i on|aion|ai on) /, "")
+        .replace(/^por favor /, "").replace(/ por favor$/, "");
       if (/^(abra|abrir|acesse|acessar) (a )?(central 6d|adl midia)$/.test(command) && central) {
         window.location.assign(central.url);
         return;
@@ -220,14 +222,20 @@ function loginPage(clientId) {
         window.location.assign(new URL("gerador", central.url).href);
         return;
       }
-      if (!/^(gere|gera|faca|faz|crie|cria|produza) (um )?(video|short)( vertical)?( de (teste|exemplo))?$/.test(command)) {
-        body.textContent = "Posso gerar um vídeo experimental com seis cenas ou abrir a Central 6D. Experimente: Ion, gere um vídeo de teste.";
+      if (!/^(gere|gera|faca|faz|crie|cria|produza|criom|criou) (um )?(video|short)( vertical)?( de (teste|exemplo))?( para mim)?$/.test(command)) {
+        body.textContent = "Posso criar um vídeo de teste ou montar um vídeo com suas frases. Exemplo: Crie um vídeo para mim: O primeiro passo é difícil. Tente mais uma vez.";
+        return;
+      }
+      const script = scriptParts.join(":").trim();
+      const scenes = script.match(/[^.!?\\n]+[.!?]*/g)?.map(line => line.trim()).filter(Boolean) ?? [];
+      if ((scriptParts.length && !scenes.length) || scenes.length > 6 || scenes.some(line => line.length > 100)) {
+        body.textContent = "Escreva de uma a seis frases, com até 100 caracteres cada.";
         return;
       }
       send.disabled = true;
       body.textContent = "Gerando o vídeo experimental. Mantenha esta tela aberta.";
       try {
-        const { blob, extension } = await renderSample(progress => {
+        const { blob, extension, sceneCount } = await renderSample(scenes, progress => {
           body.textContent = "Gerando vídeo… " + progress + "%";
         });
         const url = URL.createObjectURL(blob);
@@ -237,9 +245,11 @@ function loginPage(clientId) {
         preview.src = url;
         const download = document.createElement("a");
         download.href = url;
-        download.download = "ion-a-coragem-de-recomecar." + extension;
+        download.download = (scenes.length ? "ion-meu-video." : "ion-a-coragem-de-recomecar.") + extension;
         download.textContent = "Baixar vídeo";
-        body.textContent = "A coragem de recomeçar · seis cenas, 18 segundos, sem áudio.";
+        body.textContent = (scenes.length ? "Vídeo com suas frases" : "Vídeo de teste: A coragem de recomeçar")
+          + " · " + sceneCount + (sceneCount === 1 ? " cena, " : " cenas, ")
+          + (sceneCount * 3) + " segundos, sem áudio.";
         item.append(preview, download);
         log.scrollTop = log.scrollHeight;
       } catch (error) {
@@ -250,7 +260,7 @@ function loginPage(clientId) {
     };
   }
 
-  async function renderSample(onProgress) {
+  async function renderSample(customScenes, onProgress) {
     const canvas = document.createElement("canvas");
     canvas.width = 540;
     canvas.height = 960;
@@ -262,7 +272,21 @@ function loginPage(clientId) {
     if (!mime) throw new Error("Nenhum formato de vídeo compatível.");
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("A tela de vídeo está indisponível.");
-    const scenes = [
+    const scenes = customScenes.length ? customScenes.map(text => {
+      ctx.font = "bold 32px system-ui";
+      const lines = [];
+      let line = "";
+      for (const word of text.split(/\\s+/)) {
+        const next = line ? line + " " + word : word;
+        if (line && ctx.measureText(next).width > 460) {
+          lines.push(line);
+          line = word;
+        } else {
+          line = next;
+        }
+      }
+      return [...lines, line];
+    }) : [
       ["Nem todo recomeço", "começa com uma vitória."],
       ["Solte o peso de ontem."],
       ["Perdoar não apaga", "o passado."],
@@ -280,7 +304,7 @@ function loginPage(clientId) {
       await new Promise((resolve, reject) => {
         recorder.onstop = resolve;
         recorder.onerror = () => reject(new Error("Falha na gravação."));
-        const duration = 18_000;
+        const duration = scenes.length * 3000;
         const start = performance.now();
         function draw() {
           const elapsed = Math.min(performance.now() - start, duration);
@@ -296,7 +320,7 @@ function loginPage(clientId) {
           ctx.fillText("ADL MÍDIA", 270, 96);
           ctx.fillStyle = "white";
           ctx.font = "bold 32px system-ui";
-          scenes[index].forEach((line, row) => ctx.fillText(line, 270, 460 + row * 48, 460));
+          scenes[index].forEach((line, row) => ctx.fillText(line, 270, 480 + (row - (scenes[index].length - 1) / 2) * 48, 460));
           ctx.fillStyle = "#8bbcff";
           ctx.fillRect(48, 885, 444 * elapsed / duration, 6);
           onProgress(Math.floor(elapsed / duration * 100));
@@ -309,7 +333,7 @@ function loginPage(clientId) {
       const type = recorder.mimeType.split(";")[0] || mime.split(";")[0];
       const blob = new Blob(chunks, { type });
       if (blob.size < 1000) throw new Error("O arquivo saiu vazio.");
-      return { blob, extension: type === "video/mp4" ? "mp4" : "webm" };
+      return { blob, sceneCount: scenes.length, extension: type === "video/mp4" ? "mp4" : "webm" };
     } finally {
       clearInterval(timer);
       stream.getTracks().forEach(track => track.stop());
