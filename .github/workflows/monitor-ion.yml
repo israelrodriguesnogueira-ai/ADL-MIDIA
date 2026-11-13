@@ -1,0 +1,29 @@
+name: Monitorar disponibilidade ION
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verificar endpoint publico sem credenciais
+        env:
+          ION_URL: https://ion-validacao.israelrodriguesnogueira.workers.dev/
+        run: |
+          set -eu
+          code="$(curl --silent --show-error --location --max-time 15 --output /dev/null --write-out '%{http_code}' "$ION_URL")"
+          echo "ION homepage HTTP: $code"
+          case "$code" in
+            200) echo "Pagina de login disponivel";;
+            *) echo "::error::Pagina publica do ION indisponivel (HTTP $code)"; exit 1;;
+          esac
+          code="$(curl --silent --show-error --max-time 15 --output /dev/null --write-out '%{http_code}' "$ION_URL"verificar-acesso)"
+          echo "ION unauthenticated endpoint HTTP: $code"
+          case "$code" in
+            401) echo "Rota privada recusa acesso sem credenciais";;
+            *) echo "::error::Rota privada retornou HTTP $code em vez de 401"; exit 1;;
+          esac
