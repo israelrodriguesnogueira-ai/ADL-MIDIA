@@ -162,6 +162,21 @@ function loginPage(clientId) {
   #conversa-ion .msg-user { margin-left: 12%; background: #243a55; }
   #conversa-ion video { display: block; width: 100%; max-height: 22rem; margin-top: .75rem; }
   #pedido-ion { box-sizing: border-box; width: 100%; resize: vertical; }
+  #painel:not([hidden]) { display: flex; flex-direction: column; min-height: 88dvh; }
+  main:has(#painel:not([hidden])) { padding: .75rem 1rem 0; }
+  .ion-top, .ion-compose { display: flex; align-items: center; gap: .5rem; }
+  .ion-top h1 { flex: 1; margin: 0; font-size: 1.25rem; }
+  .ion-top button, .ion-compose button, #ion-menu button, #anexos-ion button { border-radius: 999px; border: 1px solid #3b4b66; background: #19253a; color: #f3f6fc; }
+  .ion-compose textarea { flex: 1; min-width: 0; background: transparent; }
+  #enviar-ion { padding: 0 .7rem; }
+  #conversa-ion { flex: 1; max-height: 62dvh; }
+  #comando-ion { position: sticky; bottom: 0; background: #101827; padding: .6rem 0 max(.6rem, env(safe-area-inset-bottom)); margin: 0; }
+  #ajuda-ion, #anexo-status { margin: 0; font-size: .85rem; }
+  #ion-menu { position: fixed; inset: 0 auto 0 0; margin: 0; width: min(85vw, 24rem); height: 100dvh; max-height: 100dvh; box-sizing: border-box; border: 1px solid #3b4b66; background: #101827; color: #f3f6fc; padding: 1rem; }
+  #ion-menu::backdrop { background: #0009; }
+  #historico-ion button { width: 100%; text-align: left; overflow-wrap: anywhere; }
+  #anexos-ion:not([hidden]) { display: flex; gap: .5rem; flex-wrap: wrap; }
+  .ion-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 </style>
 <main>
   <section id="entrada">
@@ -170,21 +185,39 @@ function loginPage(clientId) {
   <p id="status" role="status">Entre com sua Conta Google.</p>
   </section>
   <section id="painel" hidden>
-    <h1 id="titulo-painel" tabindex="-1">Painel do Ion</h1>
-    <p>Acesso do proprietário confirmado.</p>
+    <header class="ion-top">
+      <button id="menu-ion" type="button" aria-label="Abrir histórico">☰</button>
+      <h1 id="titulo-painel" tabindex="-1">Ion</h1>
+      <button id="novo-ion" type="button">Nova conversa</button>
+    </header>
+    <dialog id="ion-menu" aria-labelledby="historico-titulo">
+      <div class="ion-top"><h2 id="historico-titulo">Conversas</h2><button id="fechar-menu" type="button">Fechar</button></div>
+      <ul id="historico-ion"></ul>
+      <button id="limpar-ion" type="button">Limpar histórico local</button>
+      <details><summary>Áreas do Ion</summary><ul id="areas"></ul></details>
+      <button id="sair" type="button">Sair</button>
+    </dialog>
     <ul id="conversa-ion" role="log" aria-label="Conversa com o Ion"></ul>
     <form id="comando-ion">
-      <label for="pedido-ion">Comando para o Ion</label>
-      <textarea id="pedido-ion" rows="2" placeholder="Ex.: Ion, crie um vídeo educativo de trânsito" maxlength="500"
-                aria-describedby="ajuda-ion" required></textarea>
-      <div id="acoes-ion">
+      <button id="transito-ion" type="button">Criar vídeo de trânsito</button>
+      <div class="ion-compose">
+        <button id="mais-ion" type="button" aria-label="Anexar câmera, fotos ou arquivos" aria-expanded="false" aria-controls="anexos-ion">+</button>
+        <label for="pedido-ion" class="ion-label">Mensagem para o Ion</label>
+        <textarea id="pedido-ion" rows="2" placeholder="Mensagem para o Ion" maxlength="500" required></textarea>
+        <button id="voz-ion" type="button" aria-label="Ditar em português">🎙</button>
         <button id="enviar-ion" type="submit">Enviar</button>
-        <button id="transito-ion" type="button">Criar vídeo de trânsito</button>
       </div>
-      <p id="ajuda-ion">Digite ou use o microfone do teclado em Português (Brasil).</p>
+      <div id="anexos-ion" hidden>
+        <button id="escolher-camera" type="button">Câmera</button>
+        <button id="escolher-foto" type="button">Fotos</button>
+        <button id="escolher-arquivo" type="button">Arquivos</button>
+      </div>
+      <input type="file" id="camera-ion" accept="image/*" capture="environment" hidden>
+      <input type="file" id="foto-ion" accept="image/*" hidden>
+      <input type="file" id="arquivo-ion" accept="image/*,.txt,text/plain" hidden>
+      <p id="anexo-status" role="status"></p>
+      <p id="ajuda-ion" role="status"></p>
     </form>
-    <details><summary>Áreas do Ion</summary><ul id="areas"></ul></details>
-    <button id="sair" type="button">Sair</button>
   </section>
 </main>
 <script src="https://accounts.google.com/gsi/client" defer></script>
@@ -203,6 +236,132 @@ function loginPage(clientId) {
       form.requestSubmit();
     };
     const log = document.getElementById("conversa-ion");
+    const get = id => document.getElementById(id);
+    const menu = get("ion-menu");
+    const history = get("historico-ion");
+    const help = get("ajuda-ion");
+    const attachmentStatus = get("anexo-status");
+    const storageKey = "ion-conversas-v1";
+    let saved = [];
+    try {
+      const previous = JSON.parse(localStorage.getItem(storageKey));
+      if (Array.isArray(previous)) {
+        saved = previous.filter(chat => Array.isArray(chat) && chat.every(entry =>
+          (entry?.who === "Você" || entry?.who === "Ion") && typeof entry.text === "string"));
+      }
+    } catch {}
+    let current = saved[0] ?? [];
+    let attachment = null;
+    const videoUrls = [];
+    function saveHistory() {
+      if (current.length) saved = [current, ...saved.filter(chat => chat !== current)].slice(0, 20);
+      try { localStorage.setItem(storageKey, JSON.stringify(saved)); }
+      catch { help.textContent = "O navegador não conseguiu salvar o histórico."; }
+    }
+    function openConversation(chat) {
+      if (send.disabled) return;
+      current = chat;
+      attachment = null;
+      attachmentStatus.textContent = "";
+      remove.hidden = true;
+      input.value = "";
+      log.replaceChildren();
+      videoUrls.splice(0).forEach(url => URL.revokeObjectURL(url));
+      for (const entry of chat) message(entry.who, entry.text);
+      if (menu.open) menu.close();
+    }
+    get("novo-ion").onclick = () => openConversation([]);
+    get("menu-ion").onclick = () => {
+      history.replaceChildren();
+      for (const chat of saved) {
+        const item = document.createElement("li");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = chat[0]?.text.slice(0, 72) || "Conversa";
+        button.onclick = () => openConversation(chat);
+        item.append(button);
+        history.append(item);
+      }
+      menu.showModal();
+    };
+    get("fechar-menu").onclick = () => menu.close();
+    get("limpar-ion").onclick = () => {
+      if (send.disabled || !window.confirm("Limpar as conversas salvas neste navegador?")) return;
+      saved = [];
+      openConversation([]);
+      saveHistory();
+    };
+
+    const attach = get("mais-ion");
+    const attachments = get("anexos-ion");
+    attach.onclick = () => {
+      attachments.hidden = !attachments.hidden;
+      attach.setAttribute("aria-expanded", String(!attachments.hidden));
+    };
+    for (const [buttonId, inputId] of [["escolher-camera","camera-ion"],["escolher-foto","foto-ion"],["escolher-arquivo","arquivo-ion"]]) {
+      const picker = get(inputId);
+      get(buttonId).onclick = () => picker.click();
+      picker.onchange = async () => {
+        const file = picker.files[0];
+        picker.value = "";
+        if (!file || send.disabled) return;
+        attachments.hidden = true;
+        attach.setAttribute("aria-expanded", "false");
+        if (file.type.startsWith("image/") && file.size <= 10_000_000) {
+          attachment = file;
+          attachmentStatus.textContent = "Foto escolhida: " + file.name;
+          remove.hidden = false;
+          return;
+        }
+        if (/\\.txt$/i.test(file.name) && file.size <= 4_000) {
+          const script = (await file.text()).trim();
+          if (script.length && script.length <= 480) {
+            input.value = "Crie um vídeo: " + script;
+            return;
+          }
+        }
+        help.textContent = "Use uma foto de até 10 MB ou um arquivo TXT com até 480 caracteres.";
+      };
+    }
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.hidden = true;
+    remove.textContent = "Remover foto";
+    attachmentStatus.after(remove);
+    remove.onclick = () => { attachment = null; attachmentStatus.textContent = ""; remove.hidden = true; };
+
+    const microphone = get("voz-ion");
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition;
+    microphone.onclick = () => {
+      if (recognition) { recognition.stop(); return; }
+      if (!Recognition) {
+        help.textContent = "Use o microfone do teclado. O navegador não oferece ditado na página.";
+        input.focus();
+        return;
+      }
+      const session = new Recognition();
+      recognition = session;
+      session.lang = "pt-BR";
+      session.onresult = event => {
+        input.value = (input.value + " " + event.results[0][0].transcript).trim().slice(0, 500);
+        help.textContent = "Confira a transcrição e toque em Enviar.";
+      };
+      session.onerror = () => { help.textContent = "O ditado falhou. Você pode usar o microfone do teclado."; };
+      session.onend = () => {
+        recognition = null;
+        microphone.setAttribute("aria-pressed", "false");
+      };
+      try {
+        session.start();
+        microphone.setAttribute("aria-pressed", "true");
+        help.textContent = "Ouvindo em português…";
+      } catch {
+        recognition = null;
+        help.textContent = "Use o microfone do teclado para ditar.";
+      }
+    };
+
     function message(who, content) {
       const item = document.createElement("li");
       item.className = who === "Você" ? "msg-user" : "msg-ion";
@@ -216,23 +375,35 @@ function loginPage(clientId) {
       return { item, body };
     }
 
+    openConversation(current);
     form.onsubmit = async event => {
       event.preventDefault();
       const request = input.value.trim();
       if (!request || send.disabled) return;
       message("Você", request);
+      current.push({who: "Você", text: request});
+      saveHistory();
       input.value = "";
       const { item, body } = message("Ion", "Entendendo seu pedido…");
+      const record = {who: "Ion", text: ""};
+      current.push(record);
+      const update = (reply) => {
+        body.textContent = reply;
+        record.text = reply;
+        saveHistory();
+      };
       const [instruction, ...scriptParts] = request.split(":");
       const command = instruction.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
         .toLowerCase().replace(/[.,!?]/g, " ").trim().replace(/\\s+/g, " ")
         .replace(/^(?:ion|i on|aion|ai on) /, "")
         .replace(/^por favor /, "").replace(/ por favor$/, "");
       if (/^(abra|abrir|acesse|acessar) (a )?(central 6d|adl midia)$/.test(command) && central) {
+        update("Abrindo a Central 6D.");
         window.location.assign(central.url);
         return;
       }
       if (/^(abra|abrir|acesse|acessar) (o )?gerador( de videos?)?$/.test(command) && central) {
+        update("Abrindo o gerador.");
         window.location.assign(new URL("gerador", central.url).href);
         return;
       }
@@ -244,13 +415,13 @@ function loginPage(clientId) {
         && /\\b(?:transito|seguranca viaria)\\b/.test(command)
         && !/\\b(?:nao|sem|cancele)\\b/.test(command);
       if (!videoRequest && !trafficRequest) {
-        body.textContent = "Posso criar um vídeo de teste ou montar um vídeo com suas frases. Exemplo: Crie um vídeo para mim: O primeiro passo é difícil. Tente mais uma vez.";
+        update("Posso criar um vídeo de teste ou montar um vídeo com suas frases. Exemplo: Crie um vídeo para mim: O primeiro passo é difícil. Tente mais uma vez.");
         return;
       }
       const script = scriptParts.join(":").trim();
       let scenes = script.match(/[^.!?\\n]+[.!?]*/g)?.map(line => line.trim()).filter(Boolean) ?? [];
       if ((scriptParts.length && !scenes.length) || scenes.length > 6 || scenes.some(line => line.length > 100)) {
-        body.textContent = "Escreva de uma a seis frases, com até 100 caracteres cada.";
+        update("Escreva de uma a seis frases, com até 100 caracteres cada.");
         return;
       }
       const topic = videoRequest?.[1]?.replace(/ para mim$/, "");
@@ -258,7 +429,7 @@ function loginPage(clientId) {
       if (!scenes.length && (trafficRequest || (topic && !/^de (teste|exemplo)$/.test(topic)))) {
         if (!trafficRequest && !/^(?:(?:educativo|educacional) )?(?:de|sobre|do|no|para o) (?:o )?(?:educacao (?:no|para o) |seguranca (?:no|do) )?transito$/.test(topic)
             && !/^(?:educativo|educacional) (?:de|sobre) seguranca viaria$/.test(topic)) {
-          body.textContent = "Já posso criar um vídeo educativo de trânsito. Para outro tema, envie as frases depois de dois-pontos.";
+          update("Já posso criar um vídeo educativo de trânsito. Para outro tema, envie as frases depois de dois-pontos.");
           return;
         }
         title = "Trânsito seguro";
@@ -274,10 +445,19 @@ function loginPage(clientId) {
       send.disabled = trafficButton.disabled = true;
       body.textContent = "Gerando o vídeo experimental. Mantenha esta tela aberta.";
       try {
-        const { blob, extension, sceneCount } = await renderSample(scenes, progress => {
-          body.textContent = "Gerando vídeo… " + progress + "%";
-        });
+        const photo = attachment ? await createImageBitmap(attachment) : null;
+        let result;
+        try {
+          result = await renderSample(scenes, progress => {
+            body.textContent = "Gerando vídeo… " + progress + "%";
+          }, photo);
+        } finally { photo?.close(); }
+        const { blob, extension, sceneCount } = result;
+        attachment = null;
+        attachmentStatus.textContent = "";
+        remove.hidden = true;
         const url = URL.createObjectURL(blob);
+        videoUrls.push(url);
         const preview = document.createElement("video");
         preview.controls = true;
         preview.playsInline = true;
@@ -286,20 +466,20 @@ function loginPage(clientId) {
         download.href = url;
         download.download = (title === "Trânsito seguro" ? "ion-transito-seguro." : scenes.length ? "ion-meu-video." : "ion-a-coragem-de-recomecar.") + extension;
         download.textContent = "Baixar vídeo";
-        body.textContent = title
+        update(title
           + " · " + sceneCount + (sceneCount === 1 ? " cena, " : " cenas, ")
-          + (sceneCount * 3) + " segundos, sem áudio.";
+          + (sceneCount * 3) + " segundos, sem áudio." + " Baixe o arquivo antes de sair da conversa.");
         item.append(preview, download);
         log.scrollTop = log.scrollHeight;
       } catch (error) {
-        body.textContent = "Não consegui exportar neste navegador. " + error.message;
+        update("Não consegui exportar neste navegador. " + error.message);
       } finally {
         send.disabled = trafficButton.disabled = false;
       }
     };
   }
 
-  async function renderSample(customScenes, onProgress) {
+  async function renderSample(customScenes, onProgress, photo) {
     const canvas = document.createElement("canvas");
     canvas.width = 540;
     canvas.height = 960;
@@ -353,6 +533,13 @@ function loginPage(clientId) {
           gradient.addColorStop(1, "#0b1429");
           ctx.fillStyle = gradient;
           ctx.fillRect(0, 0, 540, 960);
+          if (photo) {
+            const scale = Math.max(540 / photo.width, 960 / photo.height);
+            const width = photo.width * scale, height = photo.height * scale;
+            ctx.drawImage(photo, (540 - width) / 2, (960 - height) / 2, width, height);
+            ctx.fillStyle = "rgba(0,0,0,.55)";
+            ctx.fillRect(0, 0, 540, 960);
+          }
           ctx.textAlign = "center";
           ctx.fillStyle = "#9dcfff";
           ctx.font = "bold 24px system-ui";
