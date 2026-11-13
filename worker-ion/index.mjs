@@ -177,6 +177,17 @@ function loginPage(clientId) {
   #historico-ion button { width: 100%; text-align: left; overflow-wrap: anywhere; }
   #anexos-ion:not([hidden]) { display: flex; gap: .5rem; flex-wrap: wrap; }
   .ion-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  #painel:not([hidden]) { height: calc(100dvh - 1rem); min-height: 0; }
+  .ion-top { padding: .35rem 0; flex-shrink: 0; }
+  #conversa-ion { min-height: 0; max-height: none; align-content: start; overscroll-behavior: contain; }
+  #conversa-ion li { border: 0; background: transparent; padding: .75rem; }
+  #conversa-ion .msg-user { justify-self: end; max-width: 88%; background: #243a55; }
+  #comando-ion { position: static; flex-shrink: 0; }
+  .ion-compose { border: 1px solid #3b4b66; border-radius: 1.5rem; padding: .3rem; }
+  .ion-compose #pedido-ion { border: 0; resize: none; min-height: 44px; }
+  .ion-compose button { justify-content: center; padding: 0 .6rem; flex-shrink: 0; }
+  #enviar-ion { background: #a8d1ff; color: #101827; }
+  #transito-ion, #cancelar-video { justify-self: start; }
 </style>
 <main>
   <section id="entrada">
@@ -200,6 +211,7 @@ function loginPage(clientId) {
     <ul id="conversa-ion" role="log" aria-label="Conversa com o Ion"></ul>
     <form id="comando-ion">
       <button id="transito-ion" type="button">Criar vídeo de trânsito</button>
+      <button id="cancelar-video" type="button" hidden>Cancelar geração</button>
       <div class="ion-compose">
         <button id="mais-ion" type="button" aria-label="Anexar câmera, fotos ou arquivos" aria-expanded="false" aria-controls="anexos-ion">+</button>
         <label for="pedido-ion" class="ion-label">Mensagem para o Ion</label>
@@ -252,6 +264,9 @@ function loginPage(clientId) {
     } catch {}
     let current = saved[0] ?? [];
     let attachment = null;
+    let recording;
+    const cancelVideo = get("cancelar-video");
+    cancelVideo.onclick = () => recording?.abort();
     const videoUrls = [];
     function saveHistory() {
       if (current.length) saved = [current, ...saved.filter(chat => chat !== current)].slice(0, 20);
@@ -443,6 +458,8 @@ function loginPage(clientId) {
         ];
       }
       send.disabled = trafficButton.disabled = true;
+      recording = new AbortController();
+      cancelVideo.hidden = false;
       body.textContent = "Gerando o vídeo experimental. Mantenha esta tela aberta.";
       try {
         const photo = attachment ? await createImageBitmap(attachment) : null;
@@ -450,7 +467,7 @@ function loginPage(clientId) {
         try {
           result = await renderSample(scenes, progress => {
             body.textContent = "Gerando vídeo… " + progress + "%";
-          }, photo);
+          }, photo, recording.signal);
         } finally { photo?.close(); }
         const { blob, extension, sceneCount } = result;
         attachment = null;
@@ -472,14 +489,16 @@ function loginPage(clientId) {
         item.append(preview, download);
         log.scrollTop = log.scrollHeight;
       } catch (error) {
-        update("Não consegui exportar neste navegador. " + error.message);
+        update(recording.signal.aborted ? "Geração cancelada." : "Não consegui exportar. " + error.message);
       } finally {
+        recording = undefined;
+        cancelVideo.hidden = true;
         send.disabled = trafficButton.disabled = false;
       }
     };
   }
 
-  async function renderSample(customScenes, onProgress, photo) {
+  async function renderSample(customScenes, onProgress, photo, signal) {
     const canvas = document.createElement("canvas");
     canvas.width = 540;
     canvas.height = 960;
@@ -513,8 +532,11 @@ function loginPage(clientId) {
       ["Dê mais um passo."],
       ["Recomeçar é coragem.", "Perdoar é liberdade."],
     ];
-    const stream = canvas.captureStream(30);
+    signal.throwIfAborted();
+    const stream = canvas.captureStream(15);
     let timer;
+    let deadline;
+    let abort;
     let recorder;
     try {
       recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 1800000 });
@@ -525,6 +547,7 @@ function loginPage(clientId) {
         recorder.onerror = () => reject(new Error("Falha na gravação."));
         const duration = scenes.length * 3000;
         const start = performance.now();
+        let lastProgress = -1;
         function draw() {
           const elapsed = Math.min(performance.now() - start, duration);
           const index = Math.min(scenes.length - 1, Math.floor(elapsed / 3000));
@@ -549,12 +572,26 @@ function loginPage(clientId) {
           scenes[index].forEach((line, row) => ctx.fillText(line, 270, 480 + (row - (scenes[index].length - 1) / 2) * 48, 460));
           ctx.fillStyle = "#8bbcff";
           ctx.fillRect(48, 885, 444 * elapsed / duration, 6);
-          onProgress(Math.floor(elapsed / duration * 100));
+          const progress = Math.min(100, Math.floor(elapsed / duration * 20) * 5);
+          if (progress !== lastProgress) {
+            lastProgress = progress;
+            onProgress(progress);
+          }
           return elapsed >= duration;
         }
         draw();
         recorder.start(500);
-        timer = setInterval(() => { if (draw()) { clearInterval(timer); recorder.stop(); } }, 33);
+        abort = () => reject(signal.reason);
+        signal.addEventListener("abort", abort, { once: true });
+        deadline = setTimeout(() => reject(new Error("A gravação excedeu o tempo esperado.")), duration + 6000);
+        timer = setInterval(() => {
+          try {
+            if (draw()) {
+              clearInterval(timer);
+              if (recorder.state !== "inactive") recorder.stop();
+            }
+          } catch (error) { reject(error); }
+        }, 67);
       });
       const type = recorder.mimeType.split(";")[0] || mime.split(";")[0];
       const blob = new Blob(chunks, { type });
@@ -562,6 +599,8 @@ function loginPage(clientId) {
       return { blob, sceneCount: scenes.length, extension: type === "video/mp4" ? "mp4" : "webm" };
     } finally {
       clearInterval(timer);
+      clearTimeout(deadline);
+      if (abort) signal.removeEventListener("abort", abort);
       stream.getTracks().forEach(track => track.stop());
     }
   }
