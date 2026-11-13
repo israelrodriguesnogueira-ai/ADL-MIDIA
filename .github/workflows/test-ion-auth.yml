@@ -1,0 +1,26 @@
+name: Testar autenticacao ION
+on:
+  pull_request:
+    paths:
+      - "worker-ion/**"
+      - "integracoes/ion-controle-dono.mjs"
+      - "testes/ion-worker-auth.test.mjs"
+      - ".github/workflows/test-ion-auth.yml"
+  push:
+    branches:
+      - "ion/diagnostico-503"
+    paths:
+      - "worker-ion/**"
+      - "integracoes/ion-controle-dono.mjs"
+      - "testes/ion-worker-auth.test.mjs"
+      - ".github/workflows/test-ion-auth.yml"
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Executar testes sem credenciais reais
+        run: node --version && node --test testes/ion-worker-auth.test.mjs

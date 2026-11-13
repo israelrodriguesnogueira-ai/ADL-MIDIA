@@ -13,6 +13,7 @@ export default {
     const ownerEmail = env.ION_OWNER_EMAIL?.trim().toLowerCase();
     const audience = env.ION_GOOGLE_CLIENT_ID?.trim();
     if (!ownerEmail?.endsWith("@gmail.com") || !/^[a-z0-9-]+\.apps\.googleusercontent\.com$/.test(audience ?? "")) {
+      console.warn(JSON.stringify({ event: "ion.auth_configuration_invalid", ownerEmailConfigured: Boolean(ownerEmail?.endsWith("@gmail.com")), googleClientIdConfigured: /^[a-z0-9-]+\.apps\.googleusercontent\.com$/.test(audience ?? "") }));
       return new Response("Validação ainda indisponível.", {
         status: 503,
         headers: { "Cache-Control": "no-store" },
@@ -67,8 +68,17 @@ async function verifyGoogleIdentity(request, audience) {
     return null;
   }
 
-  const response = await fetch(GOOGLE_KEYS_URL, { redirect: "error" });
-  if (!response.ok) throw new Error("Chaves do Google indisponíveis.");
+  let response;
+  try {
+    response = await fetch(GOOGLE_KEYS_URL, { redirect: "error" });
+  } catch {
+    console.warn(JSON.stringify({ event: "ion.google_keys_unavailable", reason: "network_failure" }));
+    throw new Error("Chaves do Google indisponíveis.");
+  }
+  if (!response.ok) {
+    console.warn(JSON.stringify({ event: "ion.google_keys_unavailable", reason: "http_failure", status: response.status }));
+    throw new Error("Chaves do Google indisponíveis.");
+  }
   const { keys } = await response.json();
   const jwk = keys.find(key => key.kid === header.kid && key.kty === "RSA");
   if (!jwk) return null;
