@@ -170,7 +170,7 @@ function loginPage(clientId) {
     <ul id="conversa-ion" role="log" aria-label="Conversa com o Ion"></ul>
     <form id="comando-ion">
       <label for="pedido-ion">Comando para o Ion</label>
-      <textarea id="pedido-ion" rows="2" placeholder="Ex.: Ion, gere um vídeo de teste" maxlength="500"
+      <textarea id="pedido-ion" rows="2" placeholder="Ex.: Ion, crie um vídeo educativo de trânsito" maxlength="500"
                 aria-describedby="ajuda-ion" required></textarea>
       <p id="ajuda-ion">Digite ou use o microfone do teclado e toque em Enviar.</p>
       <button id="enviar-ion" type="submit">Enviar</button>
@@ -222,15 +222,34 @@ function loginPage(clientId) {
         window.location.assign(new URL("gerador", central.url).href);
         return;
       }
-      if (!/^(gere|gera|faca|faz|crie|cria|produza|criom|criou) (um )?(video|short)( vertical)?( de (teste|exemplo))?( para mim)?$/.test(command)) {
+      const videoRequest = /^(?:quero(?: que voce)? |(?:voce )?(?:pode|poderia|consegue) )?(?:gere|gera|gerar|faca|faz|fazer|crie|cria|criar|produza|produzir|criom|criou) (?:para mim )?(?:um )?(?:video|short)(?: vertical)?(?: para mim)?(?: (.+))?$/.exec(command);
+      if (!videoRequest) {
         body.textContent = "Posso criar um vídeo de teste ou montar um vídeo com suas frases. Exemplo: Crie um vídeo para mim: O primeiro passo é difícil. Tente mais uma vez.";
         return;
       }
       const script = scriptParts.join(":").trim();
-      const scenes = script.match(/[^.!?\\n]+[.!?]*/g)?.map(line => line.trim()).filter(Boolean) ?? [];
+      let scenes = script.match(/[^.!?\\n]+[.!?]*/g)?.map(line => line.trim()).filter(Boolean) ?? [];
       if ((scriptParts.length && !scenes.length) || scenes.length > 6 || scenes.some(line => line.length > 100)) {
         body.textContent = "Escreva de uma a seis frases, com até 100 caracteres cada.";
         return;
+      }
+      const topic = videoRequest[1]?.replace(/ para mim$/, "");
+      let title = scenes.length ? "Vídeo com suas frases" : "Vídeo de teste: A coragem de recomeçar";
+      if (!scenes.length && topic && !/^de (teste|exemplo)$/.test(topic)) {
+        if (!/^(?:(?:educativo|educacional) )?(?:de|sobre|do|no|para o) (?:o )?(?:educacao (?:no|para o) |seguranca (?:no|do) )?transito$/.test(topic)
+            && !/^(?:educativo|educacional) (?:de|sobre) seguranca viaria$/.test(topic)) {
+          body.textContent = "Já posso criar um vídeo educativo de trânsito. Para outro tema, envie as frases depois de dois-pontos.";
+          return;
+        }
+        title = "Trânsito seguro";
+        scenes = [
+          "Trânsito seguro começa com atenção.",
+          "Ao dirigir, mantenha o celular guardado.",
+          "Reduza a velocidade perto das faixas de pedestres.",
+          "A pé, espere os veículos pararem antes de atravessar.",
+          "Use o cinto em todos os assentos.",
+          "Respeite a sinalização. Cuidar no trânsito protege vidas.",
+        ];
       }
       send.disabled = true;
       body.textContent = "Gerando o vídeo experimental. Mantenha esta tela aberta.";
@@ -245,9 +264,9 @@ function loginPage(clientId) {
         preview.src = url;
         const download = document.createElement("a");
         download.href = url;
-        download.download = (scenes.length ? "ion-meu-video." : "ion-a-coragem-de-recomecar.") + extension;
+        download.download = (title === "Trânsito seguro" ? "ion-transito-seguro." : scenes.length ? "ion-meu-video." : "ion-a-coragem-de-recomecar.") + extension;
         download.textContent = "Baixar vídeo";
-        body.textContent = (scenes.length ? "Vídeo com suas frases" : "Vídeo de teste: A coragem de recomeçar")
+        body.textContent = title
           + " · " + sceneCount + (sceneCount === 1 ? " cena, " : " cenas, ")
           + (sceneCount * 3) + " segundos, sem áudio.";
         item.append(preview, download);
