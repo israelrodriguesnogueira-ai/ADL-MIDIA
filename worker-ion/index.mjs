@@ -152,7 +152,11 @@ function loginPage(clientId) {
   #comando-ion { display: grid; gap: .5rem; margin: 1.25rem 0; }
   #pedido-ion { font: inherit; padding: .75rem; border: 1px solid #64748b; border-radius: .5rem; }
   #comando-ion button { justify-self: start; }
-  #resposta-ion { margin: 0; }
+  #conversa-ion { max-height: 55vh; overflow: auto; margin-bottom: .5rem; }
+  #conversa-ion li p { white-space: pre-wrap; overflow-wrap: anywhere; }
+  #conversa-ion .msg-user { margin-left: 12%; background: #243a55; }
+  #conversa-ion video { display: block; width: 100%; max-height: 22rem; margin-top: .75rem; }
+  #pedido-ion { box-sizing: border-box; width: 100%; resize: vertical; }
 </style>
 <main>
   <section id="entrada">
@@ -163,13 +167,13 @@ function loginPage(clientId) {
   <section id="painel" hidden>
     <h1 id="titulo-painel" tabindex="-1">Painel do Ion</h1>
     <p>Acesso do proprietário confirmado.</p>
+    <ul id="conversa-ion" role="log" aria-label="Conversa com o Ion"></ul>
     <form id="comando-ion">
       <label for="pedido-ion">Comando para o Ion</label>
-      <input id="pedido-ion" placeholder="Ex.: Abrir o gerador de vídeo" maxlength="160"
-             aria-describedby="ajuda-ion" required>
-      <p id="ajuda-ion">Digite ou use o microfone do teclado e toque em Executar.</p>
-      <button type="submit">Executar</button>
-      <p id="resposta-ion" role="status"></p>
+      <textarea id="pedido-ion" rows="2" placeholder="Ex.: Ion, gere um vídeo de teste" maxlength="500"
+                aria-describedby="ajuda-ion" required></textarea>
+      <p id="ajuda-ion">Digite ou use o microfone do teclado e toque em Enviar.</p>
+      <button id="enviar-ion" type="submit">Enviar</button>
     </form>
     <ul id="areas"></ul>
     <button id="sair" type="button">Sair</button>
@@ -182,22 +186,134 @@ function loginPage(clientId) {
 
   function connectCommands(areas) {
     const central = areas.find(area => area.nome === "Central 6D" && area.url);
-    document.getElementById("comando-ion").onsubmit = event => {
+    const input = document.getElementById("pedido-ion");
+    const send = document.getElementById("enviar-ion");
+    const log = document.getElementById("conversa-ion");
+    function message(who, content) {
+      const item = document.createElement("li");
+      item.className = who === "Você" ? "msg-user" : "msg-ion";
+      const label = document.createElement("strong");
+      label.textContent = who;
+      const body = document.createElement("p");
+      body.textContent = content;
+      item.append(label, body);
+      log.append(item);
+      log.scrollTop = log.scrollHeight;
+      return { item, body };
+    }
+
+    document.getElementById("comando-ion").onsubmit = async event => {
       event.preventDefault();
-      const command = document.getElementById("pedido-ion").value
-        .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
-        .replace(/[.,!?]/g, " ").trim().replace(/\\s+/g, " ").replace(/^ion /, "");
-      const response = document.getElementById("resposta-ion");
-      if (central && /^(abra|abrir|acesse|acessar) (a )?(central 6d|adl midia)$/.test(command)) {
+      const request = input.value.trim();
+      if (!request || send.disabled) return;
+      message("Você", request);
+      input.value = "";
+      const { item, body } = message("Ion", "Entendendo seu pedido…");
+      const command = request.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
+        .toLowerCase().replace(/[.,!?]/g, " ").trim().replace(/\\s+/g, " ")
+        .replace(/^ion /, "").replace(/^por favor /, "").replace(/ por favor$/, "");
+      if (/^(abra|abrir|acesse|acessar) (a )?(central 6d|adl midia)$/.test(command) && central) {
         window.location.assign(central.url);
         return;
       }
-      if (central && /^(abra|abrir|acesse|acessar) (o )?gerador( de videos?)?$/.test(command)) {
-        window.location.assign(new URL("gerador.html", central.url).href);
+      if (/^(abra|abrir|acesse|acessar) (o )?gerador( de videos?)?$/.test(command) && central) {
+        window.location.assign(new URL("gerador", central.url).href);
         return;
       }
-      response.textContent = "Comandos disponíveis: Abrir a Central 6D ou Abrir o gerador de vídeo.";
+      if (!/^(gere|gera|faca|faz|crie|cria|produza) (um )?(video|short)( vertical)?( de (teste|exemplo))?$/.test(command)) {
+        body.textContent = "Posso gerar um vídeo experimental com seis cenas ou abrir a Central 6D. Experimente: Ion, gere um vídeo de teste.";
+        return;
+      }
+      send.disabled = true;
+      body.textContent = "Gerando o vídeo experimental. Mantenha esta tela aberta.";
+      try {
+        const { blob, extension } = await renderSample(progress => {
+          body.textContent = "Gerando vídeo… " + progress + "%";
+        });
+        const url = URL.createObjectURL(blob);
+        const preview = document.createElement("video");
+        preview.controls = true;
+        preview.playsInline = true;
+        preview.src = url;
+        const download = document.createElement("a");
+        download.href = url;
+        download.download = "ion-a-coragem-de-recomecar." + extension;
+        download.textContent = "Baixar vídeo";
+        body.textContent = "A coragem de recomeçar · seis cenas, 18 segundos, sem áudio.";
+        item.append(preview, download);
+        log.scrollTop = log.scrollHeight;
+      } catch (error) {
+        body.textContent = "Não consegui exportar neste navegador. " + error.message;
+      } finally {
+        send.disabled = false;
+      }
     };
+  }
+
+  async function renderSample(onProgress) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 540;
+    canvas.height = 960;
+    if (!window.MediaRecorder || !canvas.captureStream) {
+      throw new Error("Abra o Ion no Safari ou no Chrome atualizado.");
+    }
+    const mime = ["video/mp4;codecs=avc1.42E01E", "video/mp4", "video/webm;codecs=vp8", "video/webm"]
+      .find(type => MediaRecorder.isTypeSupported(type));
+    if (!mime) throw new Error("Nenhum formato de vídeo compatível.");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("A tela de vídeo está indisponível.");
+    const scenes = [
+      ["Nem todo recomeço", "começa com uma vitória."],
+      ["Solte o peso de ontem."],
+      ["Perdoar não apaga", "o passado."],
+      ["Mas abre espaço para a paz."],
+      ["Dê mais um passo."],
+      ["Recomeçar é coragem.", "Perdoar é liberdade."],
+    ];
+    const stream = canvas.captureStream(30);
+    let timer;
+    let recorder;
+    try {
+      recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 1800000 });
+      const chunks = [];
+      recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+      await new Promise((resolve, reject) => {
+        recorder.onstop = resolve;
+        recorder.onerror = () => reject(new Error("Falha na gravação."));
+        const duration = 18_000;
+        const start = performance.now();
+        function draw() {
+          const elapsed = Math.min(performance.now() - start, duration);
+          const index = Math.min(scenes.length - 1, Math.floor(elapsed / 3000));
+          const gradient = ctx.createLinearGradient(0, 0, 540, 960);
+          gradient.addColorStop(0, ["#142b50", "#3a244e", "#193b44"][index % 3]);
+          gradient.addColorStop(1, "#0b1429");
+          ctx.fillStyle = gradient;
+          ctx.fillRect(0, 0, 540, 960);
+          ctx.textAlign = "center";
+          ctx.fillStyle = "#9dcfff";
+          ctx.font = "bold 24px system-ui";
+          ctx.fillText("ADL MÍDIA", 270, 96);
+          ctx.fillStyle = "white";
+          ctx.font = "bold 32px system-ui";
+          scenes[index].forEach((line, row) => ctx.fillText(line, 270, 460 + row * 48, 460));
+          ctx.fillStyle = "#8bbcff";
+          ctx.fillRect(48, 885, 444 * elapsed / duration, 6);
+          onProgress(Math.floor(elapsed / duration * 100));
+          return elapsed >= duration;
+        }
+        draw();
+        recorder.start(500);
+        timer = setInterval(() => { if (draw()) { clearInterval(timer); recorder.stop(); } }, 33);
+      });
+      const type = recorder.mimeType.split(";")[0] || mime.split(";")[0];
+      const blob = new Blob(chunks, { type });
+      if (blob.size < 1000) throw new Error("O arquivo saiu vazio.");
+      return { blob, extension: type === "video/mp4" ? "mp4" : "webm" };
+    } finally {
+      clearInterval(timer);
+      stream.getTracks().forEach(track => track.stop());
+    }
   }
 
   function showPanel(areas) {
