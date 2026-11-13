@@ -1,0 +1,109 @@
+name: Diagnóstico do ION
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/ion-diagnostico.yml]
+permissions: {}
+concurrency:
+  group: ion-diagnostico
+  cancel-in-progress: false
+jobs:
+  logs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Capturar eventos de validação
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: dcedad52c4d58ad2458d1b6aa70fb716
+          CAPTURE_SECONDS: ${{ github.event_name == 'workflow_dispatch' && '180' || '40' }}
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          set -euo pipefail
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::O segredo CLOUDFLARE_API_TOKEN não está disponível."
+            exit 1
+          fi
+
+          cat > "$RUNNER_TEMP/ion-filter.py" <<'PY'
+          import json
+          import sys
+
+          events = {
+              "ion.access_check_started": {},
+              "ion.google_keys_unavailable": {
+                  "reason": {"network_failure", "http_failure"},
+                  "errorType": {"timeout", "fetch_type_error", "other"},
+              },
+              "ion.google_verification_error": {
+                  "stage": {"key_response", "key_import", "signature_verification"},
+              },
+              "ion.auth_configuration_invalid": {},
+              "ion.owner_access_denied": {
+                  "reason": {"verificador_indisponivel", "sessao_ausente_ou_invalida", "identidade_sem_permissao"},
+              },
+          }
+
+          payload = []
+          for line in sys.stdin:
+              if not payload and not line.startswith("{"):
+                  continue
+              payload.append(line)
+              try:
+                  invocation = json.loads("".join(payload))
+              except json.JSONDecodeError:
+                  if line.rstrip() == "{":
+                      payload = [line]
+                  if len(payload) > 2000 or line.rstrip() == "}":
+                      payload = []
+                  continue
+              payload = []
+              if not isinstance(invocation, dict):
+                  continue
+              request = (invocation.get("event") or {}).get("request") or {}
+              if request.get("url") != "https://ion-validacao.israelrodriguesnogueira.workers.dev/verificar-acesso":
+                  continue
+              for entry in invocation.get("logs", []):
+                  for message in entry.get("message", []):
+                      try:
+                          event = json.loads(message) if isinstance(message, str) else message
+                      except json.JSONDecodeError:
+                          continue
+                      if not isinstance(event, dict):
+                          continue
+                      name = event.get("event")
+                      if not isinstance(name, str) or name not in events:
+                          continue
+                      output = {"event": name}
+                      for key, allowed in events[name].items():
+                          value = event.get(key)
+                          if isinstance(value, str) and value in allowed:
+                              output[key] = value
+                      print(json.dumps(output), flush=True)
+          PY
+
+          env -u CLOUDFLARE_API_TOKEN npm install --prefix "$RUNNER_TEMP/ion-wrangler" --no-audit --no-fund wrangler@4.160.0
+          trap 'if [ -n "${tail_pid:-}" ]; then kill "$tail_pid" 2>/dev/null || true; fi' EXIT
+          (
+            sleep 18
+            curl -sS --max-time 10 -o /dev/null -w 'Teste sem login: HTTP %{http_code}\n' \
+              https://ion-validacao.israelrodriguesnogueira.workers.dev/verificar-acesso
+          ) &
+          tail_pid=$!
+
+          set +e
+          timeout --signal=INT --kill-after=5s "$CAPTURE_SECONDS" \
+            "$RUNNER_TEMP/ion-wrangler/node_modules/.bin/wrangler" tail ion-validacao --format json --method GET \
+            2>"$RUNNER_TEMP/ion-tail-errors" \
+            | python -u "$RUNNER_TEMP/ion-filter.py" | tee "$RUNNER_TEMP/ion-events"
+          result=( "${PIPESTATUS[@]}" )
+          set -e
+          if [ "${result[0]}" -ne 124 ] || [ "${result[1]}" -ne 0 ] || [ "${result[2]}" -ne 0 ]; then
+            echo "::error::A captura terminou antes do prazo. Confira a validade do token e a permissão Workers Tail Read."
+            exit 1
+          fi
+          if ! grep -q '"event": "ion.access_check_started"' "$RUNNER_TEMP/ion-events"; then
+            echo "::error::Nenhum evento de validação foi recebido durante a captura."
+            exit 1
+          fi
