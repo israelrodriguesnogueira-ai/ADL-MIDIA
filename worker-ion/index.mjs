@@ -3,7 +3,7 @@ import { protectOwnerRoute } from "../integracoes/ion-controle-dono.mjs";
 export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
-    if (path !== "/" && path !== "/verificar-acesso") {
+    if (path !== "/" && path !== "/verificar-acesso" && path !== "/painel") {
       return new Response("Rota indisponível.", { status: 404 });
     }
     if (request.method !== "GET") {
@@ -30,9 +30,15 @@ export default {
       owner: { issuer: GOOGLE_ISSUER, subject: ownerEmail },
       verifySession: () => verifyGoogleIdentity(request, audience),
       audit: ({ actor, ...event }) => console.warn(JSON.stringify(event)),
-      action: "verificar_acesso",
+      action: path === "/painel" ? "abrir_painel" : "verificar_acesso",
       resource: "ion",
-    }, () => Response.json({ acesso: "proprietario", modo: "validacao" }));
+    }, () => path === "/painel"
+      ? Response.json({ areas: [
+          { nome: "Central 6D", descricao: "Produção de vídeos", url: "https://adl-midia.israelrodriguesnogueira.workers.dev/" },
+          { nome: "Shopee Gestão", descricao: "Conexão com a loja pendente" },
+          { nome: "ADL Auto", descricao: "Integração pendente" },
+        ] })
+      : Response.json({ acesso: "proprietario", modo: "validacao" }));
 
     return verifyOwner(request);
   },
@@ -128,15 +134,62 @@ function loginPage(clientId) {
 <html lang="pt-BR">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ion Validacao</title>
+<meta name="theme-color" content="#101827">
+<title>Ion</title>
+<style>
+  :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101827; color: #f3f6fc; }
+  body { margin: 0; }
+  main { max-width: 48rem; margin: auto; padding: 3rem 1.25rem; }
+  h1 { margin-top: 0; }
+  p { color: #bfcbe0; line-height: 1.5; }
+  ul { list-style: none; padding: 0; display: grid; gap: .75rem; }
+  li { border: 1px solid #3b4b66; border-radius: .75rem; padding: 1rem; background: #19253a; }
+  li h2 { font-size: 1.1rem; margin: 0; }
+  li p { margin: .4rem 0 0; }
+  a, button { display: inline-flex; align-items: center; min-height: 44px; }
+  a { color: #a8d1ff; }
+  button { font: inherit; padding: 0 1rem; }
+</style>
 <main>
+  <section id="entrada">
   <h1>Validar acesso ao Ion</h1>
   <div id="google-login"></div>
   <p id="status" role="status">Entre com sua Conta Google.</p>
+  </section>
+  <section id="painel" hidden>
+    <h1 id="titulo-painel" tabindex="-1">Painel do Ion</h1>
+    <p>Acesso do proprietário confirmado.</p>
+    <ul id="areas"></ul>
+    <button id="sair" type="button">Sair</button>
+  </section>
 </main>
 <script src="https://accounts.google.com/gsi/client" defer></script>
 <script>
   const status = document.getElementById("status");
+  document.getElementById("sair").addEventListener("click", () => window.location.reload());
+
+  function showPanel(areas) {
+    const list = document.getElementById("areas");
+    list.replaceChildren();
+    for (const area of areas) {
+      const item = document.createElement("li");
+      const heading = document.createElement("h2");
+      heading.textContent = area.nome;
+      const description = document.createElement("p");
+      description.textContent = area.descricao;
+      item.append(heading, description);
+      if (area.url) {
+        const link = document.createElement("a");
+        link.href = area.url;
+        link.textContent = "Abrir " + area.nome;
+        item.append(link);
+      }
+      list.append(item);
+    }
+    document.getElementById("entrada").hidden = true;
+    document.getElementById("painel").hidden = false;
+    document.getElementById("titulo-painel").focus();
+  }
   window.addEventListener("load", () => {
     if (!window.google?.accounts?.id) {
       status.textContent = "Não foi possível carregar o login do Google.";
@@ -147,12 +200,15 @@ function loginPage(clientId) {
       callback: async ({ credential }) => {
         status.textContent = "Verificando acesso…";
         try {
-          const result = await fetch("/verificar-acesso", {
+          const result = await fetch("/painel", {
             headers: { Authorization: "Bearer " + credential },
             cache: "no-store",
           });
-          status.textContent = result.ok ? "Acesso do proprietário confirmado."
-            : result.status === 401 ? "Sessão Google inválida ou expirada (401). Tente entrar novamente."
+          if (result.ok) {
+            showPanel((await result.json()).areas);
+            return;
+          }
+          status.textContent = result.status === 401 ? "Sessão Google inválida ou expirada (401). Tente entrar novamente."
             : result.status === 403 ? "Conta Google diferente da conta proprietária configurada (403)."
             : result.status === 503 ? "Serviço de validação indisponível ou configuração incompleta (503)."
             : "Falha na validação. Código HTTP: " + result.status + ".";
