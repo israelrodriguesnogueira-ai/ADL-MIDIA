@@ -97,6 +97,19 @@ jobs:
               signal: AbortSignal.timeout(10000),
             });
           }
+          const verifyUrl = "https://api.cloudflare.com/client/v4/accounts/" +
+            process.env.CLOUDFLARE_ACCOUNT_ID + "/tokens/verify";
+          const verification = await api(verifyUrl, "GET");
+          const tokenInfo = await verification.json();
+          if (!verification.ok || !tokenInfo.success || tokenInfo.result?.status !== "active") {
+            const codes = (tokenInfo.errors ?? []).map(({ code }) => code).filter(Number.isInteger);
+            const status = tokenInfo.result?.status;
+            console.error("Verificação do token da conta: HTTP " + verification.status +
+              " | códigos: " + codes.join(", ") +
+              (["disabled", "expired"].includes(status) ? " | estado: " + status : ""));
+            process.exit(1);
+          }
+          console.error("Token da conta confirmado como ativo.");
           const response = await api(endpoint, "POST");
           const body = await response.json();
           if (!response.ok || !body.success) {
