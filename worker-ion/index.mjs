@@ -79,13 +79,24 @@ async function verifyGoogleIdentity(request, audience) {
     console.warn(JSON.stringify({ event: "ion.google_keys_unavailable", reason: "http_failure", status: response.status }));
     throw new Error("Chaves do Google indisponíveis.");
   }
-  const { keys } = await response.json();
-  const jwk = keys.find(key => key.kid === header.kid && key.kty === "RSA");
-  if (!jwk) return null;
-  const key = await crypto.subtle.importKey("jwk", jwk,
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
-  const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, signature,
-    encoder.encode(`${encodedHeader}.${encodedClaims}`));
+  let failureStage = "key_response";
+  let valid;
+  try {
+    const { keys } = await response.json();
+    if (!Array.isArray(keys)) throw new Error("Resposta de chaves inválida.");
+    const jwk = keys.find(key => key?.kid === header.kid && key.kty === "RSA");
+    if (!jwk) return null;
+
+    failureStage = "key_import";
+    const key = await crypto.subtle.importKey("jwk", jwk,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
+    failureStage = "signature_verification";
+    valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, signature,
+      encoder.encode(`${encodedHeader}.${encodedClaims}`));
+  } catch (error) {
+    console.warn(JSON.stringify({ event: "ion.google_verification_error", stage: failureStage }));
+    throw error;
+  }
 
   return valid ? { issuer: GOOGLE_ISSUER, subject: claims.email.toLowerCase() } : null;
 }
