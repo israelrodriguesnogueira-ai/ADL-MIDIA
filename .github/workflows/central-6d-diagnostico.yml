@@ -3,6 +3,11 @@ on:
   schedule:
     - cron: "0 19 * * *"
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/central-6d-diagnostico.yml"
+      - "scripts/aion-supervisor.mjs"
 permissions:
   contents: read
 jobs:
