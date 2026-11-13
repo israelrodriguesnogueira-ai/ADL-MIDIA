@@ -50,7 +50,8 @@ function decodeBase64Url(value) {
 
 async function fetchGoogleKeys() {
   const fetchKeys = () => fetch(GOOGLE_KEYS_URL, {
-    redirect: "error",
+    // Workers supports manual redirects. The caller rejects non-2xx responses.
+    redirect: "manual",
     signal: AbortSignal.timeout(2500),
   });
   try {
