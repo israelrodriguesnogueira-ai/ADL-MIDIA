@@ -37,7 +37,7 @@ const operators = {
       return waiting("Fornecer o arquivo candidato e confirmar o link do anúncio.");
     }
     if (!await exists("scripts/validar-exportacao.py")) {
-      return waiting("O verificador de vídeo da PR #10 precisa estar presente.");
+      return waiting("O script scripts/validar-exportacao.py está ausente.");
     }
     await execute("python3", ["scripts/validar-exportacao.py",
       resolve(env.AION_VIDEO_SHOPEE), "--exigir-audio"]);
@@ -56,11 +56,18 @@ const operators = {
     return waiting("Código do tradutor localizado no ZIP. Compilação e teste no Galaxy ainda pendentes.");
   },
   "Controle do dono": async () => {
-    if (!await exists("testes/ion-controle-dono.test.mjs")) {
-      return waiting("A integração do controle de dono está na PR #11.");
+    if (env.AION_MONITORAR_SITE !== "1") {
+      return waiting("A consulta ao controle de acesso em produção está desativada nesta execução.");
     }
-    await execute(process.execPath, ["--test", "testes/ion-controle-dono.test.mjs"]);
-    return waiting("Testes simulados aprovados. Falta conectar a autenticação online.");
+    const response = await fetch("https://ion-validacao.israelrodriguesnogueira.workers.dev/verificar-acesso", {
+      redirect: "manual",
+      signal: AbortSignal.timeout(15_000),
+    });
+    await response.body?.cancel();
+    if (response.status !== 401) {
+      throw new Error(`O controle de acesso retornou HTTP ${response.status} para uma chamada sem sessão. Esperado: HTTP 401.`);
+    }
+    return ok("Produção recusou acesso sem sessão (HTTP 401). O login do proprietário requer teste autenticado.");
   },
   "Financeiro": async () => {
     if (!env.AION_FECHAMENTOS_IBOV) {
