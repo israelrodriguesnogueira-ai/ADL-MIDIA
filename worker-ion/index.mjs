@@ -693,17 +693,20 @@ function loginPage(clientId) {
         saveHistory();
       };
       let { command, videoRequest, trafficRequest, scriptParts } = parseCommand(request);
-      if (/\\b(?:sincronismo|correia dentada|ponto da correia)\\b/.test(command)
-          && /\\b(?:desenho|desenha|desenhe|esquema|diagrama|ilustracao)\\b/.test(command)) {
-        const pallas = textos => textos.some(t => /\\bc4\\s+(?:pallas|palas|pala|palace)\\b/.test(t))
-          && textos.some(t => /\\b2\\s+0\\b|\\b(?:ew10a|rfj)\\b/.test(t));
-        const historicoTecnico = current.slice(0, -2).filter(m => m.who === "Você")
-          .slice(-3).map(m => m.text.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
-            .toLowerCase().replace(/[.,!?]/g, " ").replace(/\\s+/g, " "));
-        const pedidoDoC4 = pallas([command]) || (/\\b(?:desse|deste|dele|mesmo)\\b/.test(command)
-          && pallas([command, historicoTecnico.at(-1) || ""]));
-        if (pedidoDoC4 && /\\b2010\\b/.test(command + " " + (historicoTecnico.at(-1) || ""))
-            && !/\\b(?:19|20)(?!10)\\d{2}\\b/.test(command)) {
+      if (/\\b(?:sincronismo|correia dentada|correia da entrada|ponto da correia|fasagem|marcas de montagem)\\b/.test(command)
+          && !videoRequest && !trafficRequest) {
+        const modelo = /\\bc\\s*4\\s+(?:pallas|palas|pala|palace)\\b/;
+        const motor = /\\b(?:2\\s+(?:0|zero)|dois\\s+(?:ponto\\s+)?zero|ew10a|rfj)\\b/;
+        const outroMotor = /\\b(?:1\\s+(?:4|6|8)|tu5\\w*|ew10j4\\w*)\\b/;
+        const outroAno = /\\b(?:19\\d{2}|20(?!10)\\d{2})\\b/;
+        const anterior = current.slice(0, -2).filter(m => m.who === "Você").slice(-5)
+          .map(m => parseCommand(m.text).command).reverse().find(t => modelo.test(t)) || "";
+        const complemento = modelo.test(command) || /\\b(?:desse|deste|dele|mesmo)\\b/.test(command) ? anterior : "";
+        const contextoCompativel = complemento && !outroMotor.test(complemento) && !outroAno.test(complemento);
+        const aplicacaoC4 = (modelo.test(command) || contextoCompativel) && !outroAno.test(command)
+          && !outroMotor.test(command) && (motor.test(command) || (contextoCompativel && motor.test(complemento)))
+          && (/\\b2010\\b/.test(command) || (contextoCompativel && /\\b2010\\b/.test(complemento)));
+        if (aplicacaoC4) {
           update("Referência de catálogo para o Citroën C4 Pallas 2.0 16V Flex 2010, motor EW10A. A página de catálogo identifica a aplicação. O manual técnico do C4 RFJ, edição de 2005, mostra os comandos e a posição do pino do virabrequim. Na figura B1BP2V3D, A é câmbio manual e B é automático. Esta referência é da família RFJ; a edição brasileira específica de 2010 ainda não foi confirmada.");
           const referencia = document.createElement("a");
           referencia.href = "https://oficinaconectada.com.br/v/Citroen/C4-Pallas/20-16V-L4-EW10A-Flex/2010/Correias-Correntes-Procedimento-de-troca/Sincronismo-do-motor-correia-ou-corrente/";
