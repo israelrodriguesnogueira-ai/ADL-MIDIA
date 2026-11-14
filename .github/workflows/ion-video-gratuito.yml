@@ -19,7 +19,11 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y ffmpeg espeak-ng fonts-dejavu-core
-      - name: Verificar ferramentas gratuitas\n        run: |\n          command -v espeak-ng\n          test -f /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf\n      - name: Verificar FFmpeg e FFprobe
+      - name: Verificar ferramentas gratuitas
+        run: |
+          command -v espeak-ng
+          test -f /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+      - name: Verificar FFmpeg e FFprobe
         run: |
           command -v ffmpeg
           command -v ffprobe
