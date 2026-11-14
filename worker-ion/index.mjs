@@ -106,7 +106,9 @@ async function responderConversa(request, env) {
     action: "conversar_com_ion",
     resource: "ion",
   }, async () => {
-    if (!env.ION_NUCLEO) return Response.json({ erro: "Modelo de conversa ainda não conectado." }, { status: 503 });
+    if (!env.ION_AI || env.ION_AI_FREE_ENABLED !== "true") {
+      return Response.json({ erro: "Modelo de conversa aguardando ativação no plano gratuito." }, { status: 503 });
+    }
     const body = await request.text();
     if (body.length > 24000) return Response.json({ erro: "Mensagem muito longa." }, { status: 413 });
     let mensagens;
@@ -120,14 +122,16 @@ async function responderConversa(request, env) {
       return Response.json({ erro: "Histórico de conversa inválido." }, { status: 400 });
     }
     try {
-      const resposta = await env.ION_NUCLEO.fetch("https://ion-nucleo/conversa", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mensagens }),
-        signal: AbortSignal.timeout(20000),
+      const resposta = await env.ION_AI.run("@cf/meta/llama-3.1-8b-instruct-fast", {
+        messages: [{
+          role: "system",
+          content: "Você é o ION. Responda em português brasileiro e use o contexto da conversa. "
+            + "Você pode explicar, analisar texto e elaborar roteiros nesta conversa. "
+            + "Não afirme ter criado arquivos, consultado fontes externas ou executado tarefas sem confirmação do sistema.",
+        }, ...mensagens.map(({ role, content }) => ({ role, content }))],
+        max_tokens: 768,
       });
-      if (!resposta.ok) throw new Error();
-      const { texto } = await resposta.json();
+      const texto = resposta?.response;
       if (typeof texto !== "string" || !texto.trim() || texto.length > 12000) throw new Error();
       return Response.json({ texto }, { headers: { "Cache-Control": "no-store" } });
     } catch {
