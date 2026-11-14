@@ -4,8 +4,8 @@ export function identificarOperador(comando) {
   const t = comando.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const regras = [
     ["financeiro", /carteira|investiment|ibovespa|acoes|bolsa|renda fixa|tesouro|dividend|risco financeiro/],
-    ["desenvolvimento", /codigo|program|software|aplicativ|sistema|corrig|bug|deploy|github|motor|desenvolv/],
     ["cientifico", /pesquis|cientific|patente|experimento|prototip|simulac|hipotese|laboratorio/],
+    ["desenvolvimento", /codigo|program|software|aplicativ|sistema|corrig|bug|deploy|github|motor|desenvolv/],
     ["midia", /video|shorts|film|narrac|legenda|renderiz|imagem|audio/],
     ["shopee", /shopee|loja|produto|anuncio|venda|pedido/],
   ];
