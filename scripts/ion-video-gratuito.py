@@ -10,10 +10,10 @@ import tempfile
 from pathlib import Path
 
 SCENES = [
-    ("ATENCAO NO TRANSITO", "Dirigir exige atencao. Deixe o celular de lado."),
-    ("RESPEITE O SINAL", "Respeite o sinal e a faixa de pedestres."),
-    ("MANTENHA DISTANCIA", "Mantenha distancia segura do veiculo da frente."),
-    ("SEGURANCA SALVA VIDAS", "Uma escolha responsavel protege muitas vidas."),
+    ("ATENCAO NO TRANSITO", "Celular e volante nao combinam."),
+    ("RESPEITE O SINAL", "Respeite o sinal de transito."),
+    ("MANTENHA DISTANCIA", "Mantenha distancia segura."),
+    ("SEGURANCA SALVA VIDAS", "Atitudes seguras salvam vidas."),
 ]
 DURATION = 15
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
