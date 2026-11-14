@@ -31,6 +31,6 @@ test("login page remains available with configured owner", async () => {
   });
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /api\\/video\\/transito/);
-  assert.match(html, /showPanel\\(\\(await result\\.json\\(\\)\\)\\.areas, credential\\)/);
+  assert.ok(html.includes('/api/video/transito'));
+  assert.ok(html.includes('showPanel((await result.json()).areas, credential)'));
 });
