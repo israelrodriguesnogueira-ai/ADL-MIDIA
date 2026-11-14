@@ -445,6 +445,10 @@ function loginPage(clientId) {
       <ul id="historico-ion"></ul>
       <button id="limpar-ion" type="button">Limpar histórico local</button>
       <details><summary>Áreas do Ion</summary><ul id="areas"></ul></details>
+      <div id="preferencia-voz-ion" hidden>
+        <label for="voz-leitura-ion">Voz para ler respostas</label>
+        <select id="voz-leitura-ion"></select>
+      </div>
       <button id="sair" type="button">Sair</button>
     </dialog>
     <ul id="conversa-ion" role="log" aria-label="Conversa com o Ion"></ul>
@@ -638,6 +642,24 @@ function loginPage(clientId) {
     };
 
     const leitor = window.speechSynthesis;
+    const seletorVoz = get("voz-leitura-ion");
+    const chaveVoz = "ion-voz-leitura";
+    const vozesBrasileiras = () => leitor?.getVoices().filter(voz => /^pt[-_]br$/i.test(voz.lang)) ?? [];
+    const vozSalva = () => {
+      try { return localStorage.getItem(chaveVoz); } catch { return null; }
+    };
+    const preencherVozes = () => {
+      const vozes = vozesBrasileiras();
+      get("preferencia-voz-ion").hidden = !vozes.length;
+      seletorVoz.replaceChildren(new Option("Automática", ""), ...vozes.map(voz => new Option(voz.name, voz.voiceURI)));
+      seletorVoz.value = vozes.some(voz => voz.voiceURI === vozSalva()) ? vozSalva() : "";
+    };
+    seletorVoz.onchange = () => {
+      try { localStorage.setItem(chaveVoz, seletorVoz.value); } catch {}
+    };
+    preencherVozes();
+    leitor?.addEventListener?.("voiceschanged", preencherVozes);
+
     let leitura;
     function pararLeitura() {
       if (!leitura) return;
@@ -672,7 +694,10 @@ function loginPage(clientId) {
           if (!texto) return;
           const fala = new SpeechSynthesisUtterance(texto);
           fala.lang = "pt-BR";
-          const voz = leitor.getVoices().find(v => /^pt[-_]br$/i.test(v.lang) && v.localService);
+          const vozes = vozesBrasileiras();
+          const voz = vozes.find(v => v.voiceURI === vozSalva())
+            || vozes.find(v => v.localService && /\\b(?:male|masculin[oa]|Felipe|Ricardo|Thiago|Antônio|Antonio|Fabio|Fábio)\\b/i.test(v.name))
+            || vozes.find(v => v.localService);
           if (voz) fala.voice = voz;
           leitura = { fala, botao: ouvir };
           ouvir.textContent = "■";
