@@ -454,7 +454,10 @@ function loginPage(clientId) {
       const [instruction, ...scriptParts] = (quotedScript ? request.slice(0, quotedScript.index) : request).split(":");
       if (quotedScript) scriptParts.push(quotedScript[1] || quotedScript[2] || quotedScript[3]);
       const options = quotedScript ? request.slice(0, quotedScript.index) + " " + request.slice(quotedScript.index + quotedScript[0].length) : instruction;
-      const seconds = Number(/\\b(\\d+)\\s*(?:segundos?|s)\\b/i.exec(options)?.[1] ?? 0);
+      const duration = /\\b(\\d+)\\s*(minutos?|segundos?|min|s)\\b(?:\\s+e\\s+(\\d+)\\s*(?:segundos?|s)\\b)?/i.exec(options);
+      const seconds = duration
+        ? Number(duration[1]) * (duration[2].toLowerCase().startsWith("min") ? 60 : 1) + Number(duration[3] || 0)
+        : 0;
       const wantsNarration = /\\b(?:narra[cç][aã]o|narrad[oa])\\b/i.test(options);
       const command = instruction.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
         .toLowerCase().replace(/[.,!?]/g, " ").trim().replace(/\\s+/g, " ")
@@ -548,10 +551,6 @@ function loginPage(clientId) {
           cancelVideo.hidden = true;
           send.disabled = microphone.disabled = false;
         }
-        return;
-      }
-      if (seconds > 60) {
-        update("Escolha uma duração de até 60 segundos para este vídeo.");
         return;
       }
       const script = scriptParts.join(":").trim();
@@ -653,6 +652,9 @@ function loginPage(clientId) {
       ["Recomeçar é coragem.", "Perdoar é liberdade."],
     ];
     const durationSeconds = seconds || scenes.length * 3;
+    if (!Number.isSafeInteger(durationSeconds) || durationSeconds * 1000 + 6000 > 2147483647) {
+      throw new Error("A duração ultrapassa o tempo de gravação suportado pelo navegador.");
+    }
     signal.throwIfAborted();
     const stream = canvas.captureStream(15);
     let timer;
