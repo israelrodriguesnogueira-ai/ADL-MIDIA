@@ -5,11 +5,16 @@ import { identificarOperador, respostaSemExecutor } from "./ion-roteador-operado
 // AI_ENABLED=1 somente após aprovação explícita dos custos e do provedor.
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff"}});
 function classify(command){
- const t=command.toLocaleLowerCase("pt-BR");
- if(/v[ií]deo|short|film/.test(t))return {operador:"Central 6D",etapas:["roteiro","imagens","narração","legendas","renderização","validação MP4"]};
- if(/ibovespa|investimento|financeir/.test(t))return {operador:"Financeiro",etapas:["obter dados verificáveis","registrar hipótese","avaliar desempenho"],restricao:"Sem operações financeiras reais"};
- if(/shopee|loja|an[uú]ncio/.test(t))return {operador:"Shopee",etapas:["analisar solicitação","validar dados","preparar proposta"],restricao:"Sem publicação ou gastos automáticos"};
- return {operador:"Central 6D",etapas:["identificar ferramenta","validar permissões","executar","verificar resultado"]};
+ const operador=identificarOperador(command).operador;
+ const etapas={
+ financeiro:["identificar objetivo e perfil","obter dados verificáveis","construir carteira simulada","avaliar riscos"],
+ desenvolvimento:["definir requisitos","gerar código","executar testes","entregar artefato"],
+ cientifico:["formular hipótese","identificar fontes","projetar experimento","validar resultados"],
+ midia:["roteiro","imagens","narração","legendas","renderização","validação MP4"],
+ shopee:["verificar dados da loja","analisar produto","propor melhorias"],
+ geral:["compreender solicitação","selecionar executor","validar resultado"]
+ };
+ return {operador,etapas:etapas[operador]||etapas.geral};
 }
 export default {async fetch(request,env){
  const url=new URL(request.url);
