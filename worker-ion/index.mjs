@@ -188,6 +188,7 @@ function loginPage(clientId) {
   .ion-compose button { justify-content: center; padding: 0 .6rem; flex-shrink: 0; }
   #enviar-ion { background: #a8d1ff; color: #101827; }
   #transito-ion, #cancelar-video { justify-self: start; }
+  button[hidden] { display: none; }
 </style>
 <main>
   <section id="entrada">
@@ -275,6 +276,9 @@ function loginPage(clientId) {
     }
     function openConversation(chat) {
       if (send.disabled) return;
+      recognition?.abort();
+      recognition = null;
+      microphone.setAttribute("aria-pressed", "false");
       current = chat;
       attachment = null;
       attachmentStatus.textContent = "";
@@ -349,6 +353,7 @@ function loginPage(clientId) {
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition;
     microphone.onclick = () => {
+      if (send.disabled) return;
       if (recognition) { recognition.stop(); return; }
       if (!Recognition) {
         help.textContent = "Use o microfone do teclado. O navegador não oferece ditado na página.";
@@ -359,11 +364,19 @@ function loginPage(clientId) {
       recognition = session;
       session.lang = "pt-BR";
       session.onresult = event => {
-        input.value = (input.value + " " + event.results[0][0].transcript).trim().slice(0, 500);
-        help.textContent = "Confira a transcrição e toque em Enviar.";
+        const result = event.results[event.resultIndex];
+        if (recognition !== session || send.disabled || !result?.isFinal) return;
+        const transcript = result[0]?.transcript.trim();
+        if (!transcript) return;
+        input.value = transcript.slice(0, 500);
+        help.textContent = "Comando de voz enviado.";
+        form.requestSubmit();
       };
-      session.onerror = () => { help.textContent = "O ditado falhou. Você pode usar o microfone do teclado."; };
+      session.onerror = () => {
+        if (recognition === session) help.textContent = "O ditado falhou. Você pode usar o microfone do teclado.";
+      };
       session.onend = () => {
+        if (recognition !== session) return;
         recognition = null;
         microphone.setAttribute("aria-pressed", "false");
       };
@@ -390,6 +403,22 @@ function loginPage(clientId) {
       return { item, body };
     }
 
+    function parseCommand(request) {
+      const [instruction, ...scriptParts] = request.split(":");
+      const command = instruction.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
+        .toLowerCase().replace(/[.,!?]/g, " ").trim().replace(/\\s+/g, " ")
+        .replace(/^(?:ion|i on|aion|ai on) /, "")
+        .replace(/^por favor /, "").replace(/ por favor$/, "");
+      const videoRequest = /^(?:quero(?: que voce)? |(?:voce )?(?:pode|poderia|consegue) )?(?:gere|gera|gerar|faca|faz|fazer|crie|cria|criar|produza|produzir|criom|criou) (?:para mim )?(?:um )?(?:video|short)(?: vertical)?(?: para mim)?(?: (.+))?$/.exec(command);
+      // Dictation can add words before the verb and move modifiers after the topic.
+      const trafficRequest = !scriptParts.length
+        && /\\b(?:gere|gera|gerar|faca|faz|fazer|crie|cria|criar|produza|produzir|criom|criacao)\\b/.test(command)
+        && /\\b(?:video|short)\\b/.test(command)
+        && /\\b(?:transito|seguranca viaria)\\b/.test(command)
+        && !/\\b(?:nao|sem|cancele)\\b/.test(command);
+      return { command, videoRequest, trafficRequest, scriptParts };
+    }
+
     openConversation(current);
     form.onsubmit = async event => {
       event.preventDefault();
@@ -407,11 +436,19 @@ function loginPage(clientId) {
         record.text = reply;
         saveHistory();
       };
-      const [instruction, ...scriptParts] = request.split(":");
-      const command = instruction.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
-        .toLowerCase().replace(/[.,!?]/g, " ").trim().replace(/\\s+/g, " ")
-        .replace(/^(?:ion|i on|aion|ai on) /, "")
-        .replace(/^por favor /, "").replace(/ por favor$/, "");
+      let { command, videoRequest, trafficRequest, scriptParts } = parseCommand(request);
+      if (/^(?:(?:voce )?(?:ja )?pode (?:criar|gerar|fazer|produzir|comecar)|vai em frente)$/.test(command)) {
+        const previous = current.slice(0, -2).reverse().find(entry => {
+          if (entry.who !== "Você") return false;
+          const parsed = parseCommand(entry.text);
+          return parsed.videoRequest || parsed.trafficRequest;
+        });
+        if (!previous) {
+          update("Qual vídeo você quer que eu crie?");
+          return;
+        }
+        ({ command, videoRequest, trafficRequest, scriptParts } = parseCommand(previous.text));
+      }
       if (/^(abra|abrir|acesse|acessar) (a )?(central 6d|adl midia)$/.test(command) && central) {
         update("Abrindo a Central 6D.");
         window.location.assign(central.url);
@@ -422,13 +459,6 @@ function loginPage(clientId) {
         window.location.assign(new URL("gerador", central.url).href);
         return;
       }
-      const videoRequest = /^(?:quero(?: que voce)? |(?:voce )?(?:pode|poderia|consegue) )?(?:gere|gera|gerar|faca|faz|fazer|crie|cria|criar|produza|produzir|criom|criou) (?:para mim )?(?:um )?(?:video|short)(?: vertical)?(?: para mim)?(?: (.+))?$/.exec(command);
-      // Dictation can add words before the verb and move modifiers after the topic.
-      const trafficRequest = !scriptParts.length
-        && /\\b(?:gere|gera|gerar|faca|faz|fazer|crie|cria|criar|produza|produzir|criom|criacao)\\b/.test(command)
-        && /\\b(?:video|short)\\b/.test(command)
-        && /\\b(?:transito|seguranca viaria)\\b/.test(command)
-        && !/\\b(?:nao|sem|cancele)\\b/.test(command);
       if (!videoRequest && !trafficRequest) {
         update("Posso criar um vídeo de teste ou montar um vídeo com suas frases. Exemplo: Crie um vídeo para mim: O primeiro passo é difícil. Tente mais uma vez.");
         return;
@@ -449,7 +479,6 @@ function loginPage(clientId) {
         }
         title = "Trânsito seguro";
         scenes = [
-          "Trânsito seguro começa com atenção.",
           "Ao dirigir, mantenha o celular guardado.",
           "Reduza a velocidade perto das faixas de pedestres.",
           "A pé, espere os veículos pararem antes de atravessar.",
@@ -457,7 +486,7 @@ function loginPage(clientId) {
           "Respeite a sinalização. Cuidar no trânsito protege vidas.",
         ];
       }
-      send.disabled = trafficButton.disabled = true;
+      send.disabled = trafficButton.disabled = microphone.disabled = true;
       recording = new AbortController();
       cancelVideo.hidden = false;
       body.textContent = "Gerando o vídeo experimental. Mantenha esta tela aberta.";
@@ -493,7 +522,7 @@ function loginPage(clientId) {
       } finally {
         recording = undefined;
         cancelVideo.hidden = true;
-        send.disabled = trafficButton.disabled = false;
+        send.disabled = trafficButton.disabled = microphone.disabled = false;
       }
     };
   }
@@ -601,6 +630,7 @@ function loginPage(clientId) {
       clearInterval(timer);
       clearTimeout(deadline);
       if (abort) signal.removeEventListener("abort", abort);
+      if (recorder && recorder.state !== "inactive") recorder.stop();
       stream.getTracks().forEach(track => track.stop());
     }
   }
