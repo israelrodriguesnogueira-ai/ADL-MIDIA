@@ -12,3 +12,6 @@ enabled = true
 [observability.logs]
 enabled = true
 invocation_logs = false
+
+[ai]
+binding = "ION_AI"

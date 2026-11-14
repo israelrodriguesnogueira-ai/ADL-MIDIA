@@ -1,9 +1,13 @@
+import { identificarOperador } from "../integracoes/ion-roteador-operadores.mjs";
 import { protectOwnerRoute } from "../integracoes/ion-controle-dono.mjs";
 
 export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
-    if (path === "/api/video/transito") {
+    if (path === "/api/conversa") return responderConversa(request, env);
+    const bento = path === "/api/video/bento";
+    if (bento || path === "/api/video/transito") {
+      const workflow = bento ? "ion-animacao-bento.yml" : "ion-video-gratuito.yml";
       if (request.method !== "POST") return new Response("Método indisponível.", { status: 405, headers: { Allow: "POST" } });
       const ownerEmail = env.ION_OWNER_EMAIL?.trim().toLowerCase();
       const audience = env.ION_GOOGLE_CLIENT_ID?.trim();
@@ -14,14 +18,14 @@ export default {
         owner: { issuer: GOOGLE_ISSUER, subject: ownerEmail },
         verifySession: () => verifyGoogleIdentity(request, audience),
         audit: ({ actor, ...event }) => console.warn(JSON.stringify(event)),
-        action: "solicitar_video_transito",
+        action: bento ? "solicitar_animacao_bento" : "solicitar_video_transito",
         resource: "ion",
       }, async () => {
         const token = env.ION_GITHUB_ACTIONS_TOKEN;
         if (!token) return Response.json({ erro: "Integração de vídeo não configurada." }, { status: 503 });
         let result;
         try {
-          result = await fetch("https://api.github.com/repos/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/ion-video-gratuito.yml/dispatches", {
+          result = await fetch("https://api.github.com/repos/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/" + workflow + "/dispatches", {
             method: "POST",
             headers: {
               Authorization: "Bearer " + token,
@@ -42,7 +46,7 @@ export default {
         return Response.json({
           status: "solicitado",
           detalhe: "Workflow acionado. O MP4 ainda precisa ser gerado e validado.",
-          acompanhamento: "https://github.com/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/ion-video-gratuito.yml",
+          acompanhamento: "https://github.com/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/" + workflow,
         }, { status: 202 });
       });
       return ownerRoute(request);
@@ -87,6 +91,54 @@ export default {
     return verifyOwner(request);
   },
 };
+
+async function responderConversa(request, env) {
+  if (request.method !== "POST") return new Response(null, { status: 405, headers: { Allow: "POST" } });
+  const ownerEmail = env.ION_OWNER_EMAIL?.trim().toLowerCase();
+  const audience = env.ION_GOOGLE_CLIENT_ID?.trim();
+  if (!ownerEmail?.endsWith("@gmail.com") || !/^[a-z0-9-]+\.apps\.googleusercontent\.com$/.test(audience ?? "")) {
+    return Response.json({ erro: "Autenticação não configurada." }, { status: 503 });
+  }
+  return protectOwnerRoute({
+    owner: { issuer: GOOGLE_ISSUER, subject: ownerEmail },
+    verifySession: () => verifyGoogleIdentity(request, audience),
+    audit: ({ actor, ...event }) => console.warn(JSON.stringify(event)),
+    action: "conversar_com_ion",
+    resource: "ion",
+  }, async () => {
+    if (!env.ION_AI || env.ION_AI_FREE_ENABLED !== "true") {
+      return Response.json({ erro: "Modelo de conversa aguardando ativação no plano gratuito." }, { status: 503 });
+    }
+    const body = await request.text();
+    if (body.length > 24000) return Response.json({ erro: "Mensagem muito longa." }, { status: 413 });
+    let mensagens;
+    try { ({ mensagens } = JSON.parse(body)); } catch {
+      return Response.json({ erro: "Solicitação inválida." }, { status: 400 });
+    }
+    if (!Array.isArray(mensagens) || !mensagens.length || mensagens.length > 9
+        || mensagens.some(m => !m || !["user", "assistant"].includes(m.role)
+          || typeof m.content !== "string" || !m.content.trim() || m.content.length > 2000)
+        || mensagens.at(-1).role !== "user") {
+      return Response.json({ erro: "Histórico de conversa inválido." }, { status: 400 });
+    }
+    try {
+      const resposta = await env.ION_AI.run("@cf/meta/llama-3.1-8b-instruct-fast", {
+        messages: [{
+          role: "system",
+          content: "Você é o ION. Responda em português brasileiro e use o contexto da conversa. "
+            + "Você pode explicar, analisar texto e elaborar roteiros nesta conversa. "
+            + "Não afirme ter criado arquivos, consultado fontes externas ou executado tarefas sem confirmação do sistema.",
+        }, ...mensagens.map(({ role, content }) => ({ role, content }))],
+        max_tokens: 768,
+      });
+      const texto = resposta?.response;
+      if (typeof texto !== "string" || !texto.trim() || texto.length > 12000) throw new Error();
+      return Response.json({ texto }, { headers: { "Cache-Control": "no-store" } });
+    } catch {
+      return Response.json({ erro: "O núcleo de conversa está temporariamente indisponível." }, { status: 502 });
+    }
+  })(request);
+}
 
 const GOOGLE_ISSUER = "https://accounts.google.com";
 const GOOGLE_KEYS_URL = "https://www.googleapis.com/oauth2/v3/certs";
@@ -181,7 +233,7 @@ function loginPage(clientId) {
 <meta name="theme-color" content="#101827">
 <title>Ion</title>
 <style>
-  :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101827; color: #f3f6fc; }
+  :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #17181a; color: #f3f3f4; }
   body { margin: 0; }
   main { max-width: 48rem; margin: auto; padding: 3rem 1.25rem; }
   h1 { margin-top: 0; }
@@ -193,45 +245,34 @@ function loginPage(clientId) {
   a, button { display: inline-flex; align-items: center; min-height: 44px; }
   a { color: #a8d1ff; }
   button { font: inherit; padding: 0 1rem; }
-  #comando-ion { display: grid; gap: .5rem; margin: 1.25rem 0; }
-  #pedido-ion { font: inherit; padding: .75rem; border: 1px solid #64748b; border-radius: .5rem; }
-  #acoes-ion { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
-  #acoes-ion button { border: 0; border-radius: 999px; }
-  #enviar-ion { color: #101827; background: #a8d1ff; }
-  #transito-ion { color: #e3edff; background: #243a55; }
-  #acoes-ion button:disabled { opacity: .55; }
-  #areas { margin-top: .75rem; }
-  #conversa-ion { max-height: 55vh; overflow: auto; margin-bottom: .5rem; }
-  #conversa-ion li p { white-space: pre-wrap; overflow-wrap: anywhere; }
-  #conversa-ion .msg-user { margin-left: 12%; background: #243a55; }
+  #painel:not([hidden]) { display: flex; flex-direction: column; height: 100dvh; }
+  main:has(#painel:not([hidden])) { max-width: 58rem; padding: 0; }
+  .ion-top { display: flex; align-items: center; gap: .6rem; padding: .6rem 1rem; flex-shrink: 0; }
+  .ion-top h1 { flex: 1; margin: 0; font-size: 1.1rem; }
+  #painel button { border: 0; border-radius: 999px; background: transparent; color: inherit; justify-content: center; }
+  #painel button:hover { background: #ffffff12; }
+  #painel button:focus-visible, #pedido-ion:focus-visible, #painel a:focus-visible { outline: 2px solid #a8d1ff; outline-offset: 2px; }
+  #conversa-ion { flex: 1; min-height: 0; overflow: auto; align-content: start; overscroll-behavior: contain; margin: 0; padding: .8rem 1rem 1.25rem; gap: 1.1rem; }
+  #conversa-ion li { border: 0; background: transparent; padding: .4rem 0; min-width: 0; }
+  #conversa-ion li p { color: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+  #conversa-ion .msg-user { justify-self: end; max-width: 85%; padding: .65rem .95rem; border-radius: 1.2rem; background: #ffffff12; }
+  #conversa-ion .msg-user p { margin-bottom: .2rem; }
   #conversa-ion video { display: block; width: 100%; max-height: 22rem; margin-top: .75rem; }
-  #pedido-ion { box-sizing: border-box; width: 100%; resize: vertical; }
-  #painel:not([hidden]) { display: flex; flex-direction: column; min-height: 88dvh; }
-  main:has(#painel:not([hidden])) { padding: .75rem 1rem 0; }
-  .ion-top, .ion-compose { display: flex; align-items: center; gap: .5rem; }
-  .ion-top h1 { flex: 1; margin: 0; font-size: 1.25rem; }
-  .ion-top button, .ion-compose button, #ion-menu button, #anexos-ion button { border-radius: 999px; border: 1px solid #3b4b66; background: #19253a; color: #f3f6fc; }
-  .ion-compose textarea { flex: 1; min-width: 0; background: transparent; }
-  #enviar-ion { padding: 0 .7rem; }
-  #conversa-ion { flex: 1; max-height: 62dvh; }
-  #comando-ion { position: sticky; bottom: 0; background: #101827; padding: .6rem 0 max(.6rem, env(safe-area-inset-bottom)); margin: 0; }
+  #comando-ion { display: grid; gap: .4rem; margin: 0; flex-shrink: 0; padding: .5rem max(.75rem, env(safe-area-inset-right)) max(.65rem, env(safe-area-inset-bottom)) max(.75rem, env(safe-area-inset-left)); }
+  .ion-compose { display: flex; align-items: flex-end; gap: .25rem; border: 1px solid #ffffff26; background: #ffffff09; border-radius: 1.5rem; padding: .35rem; }
+  #pedido-ion { flex: 1; min-width: 0; width: 100%; box-sizing: border-box; border: 0; background: transparent; color: inherit; resize: none; font: inherit; line-height: 1.4; padding: .65rem .2rem; }
+  .ion-compose button { min-width: 44px; padding: 0 .45rem; flex-shrink: 0; }
+  #painel #enviar-ion { background: #f5f5f6; color: #15171b; font-size: 1.35rem; }
+  #painel #voz-ion[aria-pressed="true"] { background: #a8d1ff; color: #101827; }
+  #painel button:disabled { opacity: .5; }
+  #painel #cancelar-video { background: #8b3030; color: white; }
   #ajuda-ion, #anexo-status { margin: 0; font-size: .85rem; }
-  #ion-menu { position: fixed; inset: 0 auto 0 0; margin: 0; width: min(85vw, 24rem); height: 100dvh; max-height: 100dvh; box-sizing: border-box; border: 1px solid #3b4b66; background: #101827; color: #f3f6fc; padding: 1rem; }
+  #ajuda-ion:empty, #anexo-status:empty { display: none; }
+  #ion-menu { position: fixed; inset: 0 auto 0 0; margin: 0; width: min(85vw, 24rem); height: 100dvh; max-height: 100dvh; box-sizing: border-box; border: 1px solid #ffffff26; background: #202124; color: inherit; padding: 1rem; }
   #ion-menu::backdrop { background: #0009; }
   #historico-ion button { width: 100%; text-align: left; overflow-wrap: anywhere; }
   #anexos-ion:not([hidden]) { display: flex; gap: .5rem; flex-wrap: wrap; }
   .ion-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-  #painel:not([hidden]) { height: calc(100dvh - 1rem); min-height: 0; }
-  .ion-top { padding: .35rem 0; flex-shrink: 0; }
-  #conversa-ion { min-height: 0; max-height: none; align-content: start; overscroll-behavior: contain; }
-  #conversa-ion li { border: 0; background: transparent; padding: .75rem; }
-  #conversa-ion .msg-user { justify-self: end; max-width: 88%; background: #243a55; }
-  #comando-ion { position: static; flex-shrink: 0; }
-  .ion-compose { border: 1px solid #3b4b66; border-radius: 1.5rem; padding: .3rem; }
-  .ion-compose #pedido-ion { border: 0; resize: none; min-height: 44px; }
-  .ion-compose button { justify-content: center; padding: 0 .6rem; flex-shrink: 0; }
-  #enviar-ion { background: #a8d1ff; color: #101827; }
-  #cancelar-video { background: #8b3030; color: white; }
   button[hidden] { display: none; }
 </style>
 <main>
@@ -255,14 +296,12 @@ function loginPage(clientId) {
     </dialog>
     <ul id="conversa-ion" role="log" aria-label="Conversa com o Ion"></ul>
     <form id="comando-ion">
-
-
       <div class="ion-compose">
         <button id="mais-ion" type="button" aria-label="Anexar câmera, fotos ou arquivos" aria-expanded="false" aria-controls="anexos-ion">+</button>
         <label for="pedido-ion" class="ion-label">Mensagem para o Ion</label>
         <textarea id="pedido-ion" rows="2" placeholder="Mensagem para o Ion" maxlength="500" required></textarea>
         <button id="voz-ion" type="button" aria-label="Iniciar ditado em português" aria-pressed="false">🎙</button>
-        <button id="enviar-ion" type="submit">Enviar</button>
+        <button id="enviar-ion" type="submit" aria-label="Enviar mensagem">↑</button>
         <button id="cancelar-video" type="button" hidden>Parar</button>
       </div>
       <div id="anexos-ion" hidden>
@@ -305,6 +344,7 @@ function loginPage(clientId) {
     } catch {}
     let current = saved[0] ?? [];
     let attachment = null;
+    let textAttachment = null;
     let recording;
     const cancelVideo = get("cancelar-video");
     cancelVideo.onclick = () => {
@@ -325,6 +365,7 @@ function loginPage(clientId) {
       microphone.setAttribute("aria-pressed", "false");
       current = chat;
       attachment = null;
+      textAttachment = null;
       attachmentStatus.textContent = "";
       remove.hidden = true;
       input.value = "";
@@ -370,28 +411,38 @@ function loginPage(clientId) {
         if (!file || send.disabled) return;
         attachments.hidden = true;
         attach.setAttribute("aria-expanded", "false");
+        help.textContent = "";
         if (file.type.startsWith("image/") && file.size <= 10_000_000) {
           attachment = file;
-          attachmentStatus.textContent = "Foto escolhida: " + file.name;
+          textAttachment = null;
+          attachmentStatus.textContent = "Foto anexada: " + file.name;
           remove.hidden = false;
           return;
         }
         if (/\\.txt$/i.test(file.name) && file.size <= 4_000) {
-          const script = (await file.text()).trim();
-          if (script.length && script.length <= 480) {
-            input.value = "Crie um vídeo: " + script;
+          try {
+            const text = (await file.text()).trim();
+            if (text && text.length <= 1500 && !send.disabled) {
+              attachment = null;
+              textAttachment = { name: file.name, text };
+              attachmentStatus.textContent = "Arquivo anexado: " + file.name;
+              remove.hidden = false;
+              return;
+            }
+          } catch {
+            help.textContent = "Não consegui abrir o arquivo.";
             return;
           }
         }
-        help.textContent = "Use uma foto de até 10 MB ou um arquivo TXT com até 480 caracteres.";
+        help.textContent = "Use uma foto de até 10 MB ou um TXT com até 1.500 caracteres.";
       };
     }
     const remove = document.createElement("button");
     remove.type = "button";
     remove.hidden = true;
-    remove.textContent = "Remover foto";
+    remove.textContent = "Remover anexo";
     attachmentStatus.after(remove);
-    remove.onclick = () => { attachment = null; attachmentStatus.textContent = ""; remove.hidden = true; };
+    remove.onclick = () => { attachment = null; textAttachment = null; attachmentStatus.textContent = ""; remove.hidden = true; };
 
     const microphone = get("voz-ion");
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -449,8 +500,58 @@ function loginPage(clientId) {
       return { item, body };
     }
 
+    ${identificarOperador.toString()}
+
+    function simularCarteira(texto, anterior) {
+      const normalizar = valor => valor.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase();
+      const pedido = normalizar(texto);
+      const contexto = normalizar(anterior || "");
+      const valorDo = valor => {
+        const valorEmMil = /(?:r\\$\\s*)?(?:(\\d+(?:,\\d+)?)\\s+)?mil\\s+reais\\b/.exec(valor);
+        if (valorEmMil) return Number((valorEmMil[1] || "1").replace(",", ".")) * 1000;
+        const encontrado = /r\\$\\s*(\\d[\\d.,]*)|(\\d[\\d.,]*)\\s+reais\\b/.exec(valor);
+        return encontrado ? Number((encontrado[1] || encontrado[2]).replaceAll(".", "").replace(",", ".")) : 0;
+      };
+      const prazosDe = valor => {
+        const numeros = { um: "1", dois: "2", tres: "3", quatro: "4", cinco: "5", seis: "6", sete: "7", oito: "8", nove: "9", dez: "10" };
+        valor = valor.replace(/\\b(um|dois|tres|quatro|cinco|seis|sete|oito|nove|dez)\\b/g, palavra => numeros[palavra]);
+        const anos = [];
+        for (const trecho of valor.matchAll(/\\b((?:\\d+\\s*(?:,\\s*|e\\s+))*\\d+)\\s*anos?\\b/g)) {
+          anos.push(...trecho[1].match(/\\d+/g).map(Number));
+        }
+        return [...new Set(anos)].sort((a, b) => a - b);
+      };
+      const valor = valorDo(pedido) || valorDo(contexto);
+      const prazos = prazosDe(pedido).length ? prazosDe(pedido) : prazosDe(contexto);
+      if (!valor || !prazos.length) {
+        return "Para simular a carteira, informe o valor inicial em reais e o prazo em anos. Se quiser, diga se aceita oscilações.";
+      }
+      const moeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+      const formatar = n => moeda.format(n);
+      const linhas = prazos.map(anos => {
+        const acoes = anos < 3 ? 0 : anos < 5 ? .1 : .25;
+        const cenarios = [.06, .09, .12].map(taxa => formatar(valor * (1 + taxa) ** anos));
+        return anos + (anos === 1 ? " ano" : " anos") + " — Selic: " + formatar(valor * (1 - acoes))
+          + " | ETF amplo de ações: " + formatar(valor * acoes)
+          + "\\nSaldo hipotético a 6%, 9% e 12% ao ano: " + cenarios.join(" / ");
+      });
+      return "Carteira simulada de " + formatar(valor)
+        + ". Usei uma composição conservadora como referência. Cada prazo compara o mesmo aporte inicial.\\n\\n"
+        + linhas.join("\\n\\n")
+        + "\\n\\nCenários brutos, sem novos aportes, impostos, taxas ou inflação. "
+        + "As taxas são hipóteses de cálculo. O ETF pode cair e o saldo pode ficar abaixo do valor inicial.";
+    }
+
     function parseCommand(request) {
-      const [instruction, ...scriptParts] = request.split(":");
+      const quotedScript = /\\b(?:com\\s+(?:a\\s+)?frase|dizendo)\\s*:?\\s*(?:"([^"]+)"|“([^”]+)”|«([^»]+)»)/i.exec(request);
+      const [instruction, ...scriptParts] = (quotedScript ? request.slice(0, quotedScript.index) : request).split(":");
+      if (quotedScript) scriptParts.push(quotedScript[1] || quotedScript[2] || quotedScript[3]);
+      const options = quotedScript ? request.slice(0, quotedScript.index) + " " + request.slice(quotedScript.index + quotedScript[0].length) : instruction;
+      const duration = /\\b(\\d+)\\s*(minutos?|segundos?|min|s)\\b(?:\\s+e\\s+(\\d+)\\s*(?:segundos?|s)\\b)?/i.exec(options);
+      const seconds = duration
+        ? Number(duration[1]) * (duration[2].toLowerCase().startsWith("min") ? 60 : 1) + Number(duration[3] || 0)
+        : 0;
+      const wantsNarration = /\\b(?:narra[cç][aã]o|narrad[oa])\\b/i.test(options);
       const command = instruction.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
         .toLowerCase().replace(/[.,!?]/g, " ").trim().replace(/\\s+/g, " ")
         .replace(/^(?:ion|i on|aion|ai on) /, "")
@@ -463,7 +564,7 @@ function loginPage(clientId) {
         && /\\b(?:video|short)\\b/.test(command)
         && /\\b(?:transito|seguranca viaria)\\b/.test(command)
         && !/\\b(?:nao|sem|cancele)\\b/.test(command);
-      return { command, videoRequest, trafficRequest, scriptParts };
+      return { command, videoRequest, trafficRequest, scriptParts, seconds, wantsNarration };
     }
 
     openConversation(current);
@@ -472,7 +573,11 @@ function loginPage(clientId) {
       const request = input.value.trim();
       if (!request || send.disabled) return;
       message("Você", request);
-      current.push({who: "Você", text: request});
+      const textoEnviado = textAttachment
+        ? request + "\\n\\nArquivo anexado (" + textAttachment.name.slice(0, 120) + "):\\n" + textAttachment.text
+        : request;
+      current.push({who: "Você", text: textoEnviado});
+      if (textAttachment) remove.click();
       saveHistory();
       input.value = "";
       const { item, body } = message("Ion", "Entendendo seu pedido…");
@@ -483,7 +588,7 @@ function loginPage(clientId) {
         record.text = reply;
         saveHistory();
       };
-      let { command, videoRequest, trafficRequest, scriptParts } = parseCommand(request);
+      let { command, videoRequest, trafficRequest, scriptParts, seconds, wantsNarration } = parseCommand(request);
       if (/^(?:(?:voce )?(?:ja )?pode (?:criar|gerar|fazer|produzir|comecar)|vai em frente)$/.test(command)) {
         const previous = current.slice(0, -2).reverse().find(entry => {
           if (entry.who !== "Você") return false;
@@ -494,7 +599,7 @@ function loginPage(clientId) {
           update("Qual vídeo você quer que eu crie?");
           return;
         }
-        ({ command, videoRequest, trafficRequest, scriptParts } = parseCommand(previous.text));
+        ({ command, videoRequest, trafficRequest, scriptParts, seconds, wantsNarration } = parseCommand(previous.text));
       }
       if (/^(abra|abrir|acesse|acessar) (a )?(central 6d|adl midia)$/.test(command) && central) {
         update("Abrindo a Central 6D.");
@@ -506,17 +611,67 @@ function loginPage(clientId) {
         window.location.assign(new URL("gerador", central.url).href);
         return;
       }
-      if (!videoRequest && !trafficRequest) {
-        update("Posso criar um vídeo de teste ou montar um vídeo com suas frases. Exemplo: Crie um vídeo para mim: O primeiro passo é difícil. Tente mais uma vez.");
+      const bentoRequest = /\\b(?:crie|cria|criar|faca|faz|fazer|gere|gerar|anime|animar|produza|quero)\\b/.test(command)
+        && /\\b(?:desenho|animacao|video)\\b/.test(command)
+        && /\\b(?:bento|cachorro)\\b/.test(command) && /\\bbola\\b/.test(command)
+        && !/\\b(?:nao|sem|cancele)\\b/.test(command)
+        && (!seconds || seconds === 60);
+      if (!videoRequest && !trafficRequest && !bentoRequest) {
+        const areas = {
+          desenvolvimento: "desenvolvimento de software",
+          cientifico: "pesquisa científica",
+          financeiro: "análise financeira",
+          shopee: "gestão da Shopee",
+          midia: "produção de mídia",
+          geral: "conversa geral",
+        };
+        const { operador } = identificarOperador(request);
+        const perguntaAnterior = current.slice(0, -2).at(-1);
+        const pedidoAnterior = current.slice(0, -2).at(-2);
+        const pedidoNormalizado = request.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase();
+        const simulacaoAnterior = perguntaAnterior?.who === "Ion"
+          && /^(?:Para simular a carteira|Carteira simulada de)/.test(perguntaAnterior.text)
+          && pedidoAnterior?.who === "Você";
+        if ((operador === "financeiro" && /\\bcarteira\\b/.test(pedidoNormalizado))
+            || (simulacaoAnterior && operador === "geral" && /\\b(?:reais|anos?)\\b|r\\$/.test(pedidoNormalizado))) {
+          update(simularCarteira(request, simulacaoAnterior ? pedidoAnterior.text : ""));
+          return;
+        }
+        if (attachment) {
+          update("A análise da foto ainda não está conectada ao ION.");
+          return;
+        }
+        const mensagens = current.slice(0, -1).filter(entry =>
+          ["Você", "Ion"].includes(entry.who) && entry.text.trim()).slice(-9).map(entry => ({
+          role: entry.who === "Você" ? "user" : "assistant",
+          content: entry.text.slice(0, 2000),
+        }));
+        send.disabled = microphone.disabled = true;
+        try {
+          const response = await fetch("/api/conversa", {
+            method: "POST",
+            headers: { Authorization: "Bearer " + credential, "Content-Type": "application/json" },
+            body: JSON.stringify({ mensagens }),
+          });
+          const payload = await response.json();
+          update(response.ok ? payload.texto
+            : response.status === 503
+              ? "Área identificada: " + areas[operador] + ". " + payload.erro
+              : payload.erro);
+        } catch {
+          update("Falha de conexão com o núcleo de conversa.");
+        } finally {
+          send.disabled = microphone.disabled = false;
+        }
         return;
       }
-      if (trafficRequest) {
+      if (trafficRequest || bentoRequest) {
         send.disabled = microphone.disabled = true;
         cancelVideo.hidden = false;
         recording = new AbortController();
-        update("Solicitando a geração do vídeo narrado no servidor…");
+        update(bentoRequest ? "Solicitando a animação no servidor…" : "Solicitando a geração do vídeo narrado no servidor…");
         try {
-          const response = await fetch("/api/video/transito", {
+          const response = await fetch(bentoRequest ? "/api/video/bento" : "/api/video/transito", {
             signal: recording.signal,
             method: "POST",
             headers: { Authorization: "Bearer " + credential },
@@ -578,9 +733,9 @@ function loginPage(clientId) {
         try {
           result = await renderSample(scenes, progress => {
             body.textContent = "Gerando vídeo… " + progress + "%";
-          }, photo, recording.signal);
+          }, photo, recording.signal, seconds);
         } finally { photo?.close(); }
-        const { blob, extension, sceneCount } = result;
+        const { blob, extension, sceneCount, durationSeconds } = result;
         attachment = null;
         attachmentStatus.textContent = "";
         remove.hidden = true;
@@ -596,7 +751,7 @@ function loginPage(clientId) {
         download.textContent = "Baixar vídeo";
         update(title
           + " · " + sceneCount + (sceneCount === 1 ? " cena, " : " cenas, ")
-          + (sceneCount * 3) + " segundos, sem áudio." + " Baixe o arquivo antes de sair da conversa.");
+          + durationSeconds + " segundos, sem áudio." + (wantsNarration ? " A narração personalizada ainda está indisponível." : "") + " Baixe o arquivo antes de sair da conversa.");
         item.append(preview, download);
         log.scrollTop = log.scrollHeight;
       } catch (error) {
@@ -609,7 +764,7 @@ function loginPage(clientId) {
     };
   }
 
-  async function renderSample(customScenes, onProgress, photo, signal) {
+  async function renderSample(customScenes, onProgress, photo, signal, seconds) {
     const canvas = document.createElement("canvas");
     canvas.width = 540;
     canvas.height = 960;
@@ -643,6 +798,10 @@ function loginPage(clientId) {
       ["Dê mais um passo."],
       ["Recomeçar é coragem.", "Perdoar é liberdade."],
     ];
+    const durationSeconds = seconds || scenes.length * 3;
+    if (!Number.isSafeInteger(durationSeconds) || durationSeconds * 1000 + 6000 > 2147483647) {
+      throw new Error("A duração ultrapassa o tempo de gravação suportado pelo navegador.");
+    }
     signal.throwIfAborted();
     const stream = canvas.captureStream(15);
     let timer;
@@ -656,12 +815,12 @@ function loginPage(clientId) {
       await new Promise((resolve, reject) => {
         recorder.onstop = resolve;
         recorder.onerror = () => reject(new Error("Falha na gravação."));
-        const duration = scenes.length * 3000;
+        const duration = durationSeconds * 1000;
         const start = performance.now();
         let lastProgress = -1;
         function draw() {
           const elapsed = Math.min(performance.now() - start, duration);
-          const index = Math.min(scenes.length - 1, Math.floor(elapsed / 3000));
+          const index = Math.min(scenes.length - 1, Math.floor(elapsed * scenes.length / duration));
           const gradient = ctx.createLinearGradient(0, 0, 540, 960);
           gradient.addColorStop(0, ["#142b50", "#3a244e", "#193b44"][index % 3]);
           gradient.addColorStop(1, "#0b1429");
@@ -707,7 +866,7 @@ function loginPage(clientId) {
       const type = recorder.mimeType.split(";")[0] || mime.split(";")[0];
       const blob = new Blob(chunks, { type });
       if (blob.size < 1000) throw new Error("O arquivo saiu vazio.");
-      return { blob, sceneCount: scenes.length, extension: type === "video/mp4" ? "mp4" : "webm" };
+      return { blob, sceneCount: scenes.length, durationSeconds, extension: type === "video/mp4" ? "mp4" : "webm" };
     } finally {
       clearInterval(timer);
       clearTimeout(deadline);

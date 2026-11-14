@@ -1,0 +1,22 @@
+// ION: roteamento determinístico de intenções. Não realiza operações financeiras.
+export function identificarOperador(comando) {
+  if (typeof comando !== "string" || !comando.trim()) return { operador: "entrada", erro: "Comando vazio" };
+  const t = comando.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  // Prioriza a ação solicitada: "imagem de carteira digital" não é investimento.
+  if (/\b(imagem|foto|ilustracao|desenho)\b/.test(t) && /\b(criar|crie|gerar|gere|fazer|faca|produzir)\b/.test(t))
+    return { operador: "midia", candidatos: ["midia"], comando };
+  const regras = [
+    ["financeiro", /carteira|investiment|ibovespa|acoes|bolsa|renda fixa|tesouro|dividend|risco financeiro/],
+    ["cientifico", /pesquis|cientific|patente|experimento|prototip|simulac|hipotese|laboratorio/],
+    ["desenvolvimento", /codigo|program|software|aplicativ|sistema|corrig|bug|deploy|github|motor|desenvolv/],
+    ["midia", /video|shorts|film|narrac|legenda|renderiz|imagem|audio/],
+    ["shopee", /shopee|loja|produto|anuncio|venda|pedido/],
+  ];
+  const encontrados = regras.filter(([, re]) => re.test(t)).map(([nome]) => nome);
+  return { operador: encontrados[0] || "geral", candidatos: encontrados, comando };
+}
+export function respostaSemExecutor(roteamento) {
+  const nome = roteamento.operador;
+  if (nome === "financeiro") return { status: "aguardando_executor", operador: nome, mensagem: "Operador financeiro identificado. Ainda não há consulta de cotações ou execução de análise conectada. Posso preparar uma carteira simulada somente após definir horizonte, perfil de risco e capital de referência; não efetuarei ordens reais." };
+  return { status: "aguardando_executor", operador: nome, mensagem: `Operador ${nome} identificado, mas o executor correspondente ainda não está conectado. Nenhum arquivo ou tarefa foi produzido.` };
+}
