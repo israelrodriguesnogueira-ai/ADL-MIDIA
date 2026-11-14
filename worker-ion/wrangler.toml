@@ -15,3 +15,6 @@ invocation_logs = false
 
 [ai]
 binding = "ION_AI"
+
+[vars]
+ION_VISION_FREE_ENABLED = "true"
