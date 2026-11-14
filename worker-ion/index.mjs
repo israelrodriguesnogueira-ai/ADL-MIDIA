@@ -883,7 +883,48 @@ function loginPage(clientId) {
         abrir.target = "_blank";
         abrir.rel = "noopener noreferrer";
         abrir.textContent = "Abrir rascunho no WhatsApp";
-        item.append(abrir);
+        const telefone = document.createElement("input");
+        telefone.type = "tel";
+        telefone.autocomplete = "off";
+        telefone.placeholder = "+55 DDD número";
+        telefone.setAttribute("aria-label", "Número do cliente com código do país e DDD");
+        const direto = document.createElement("a");
+        direto.target = "_blank";
+        direto.rel = "noopener noreferrer";
+        direto.textContent = "Abrir conversa com este número";
+        direto.hidden = true;
+        const atualizarDestino = () => {
+          const numero = telefone.value.replace(/\\D/g, "");
+          const valido = /^[1-9]\\d{7,14}$/.test(numero) && telefone.value.trim().startsWith("+");
+          direto.hidden = !valido;
+          if (valido) direto.href = "https://wa.me/" + numero + "?text=" + encodeURIComponent(mensagem);
+          else direto.removeAttribute("href");
+        };
+        telefone.oninput = atualizarDestino;
+        item.append(abrir, document.createElement("br"), telefone);
+        if (navigator.contacts?.select) {
+          const escolher = document.createElement("button");
+          escolher.type = "button";
+          escolher.textContent = "Escolher contato do celular";
+          escolher.onclick = async () => {
+            try {
+              const [contato] = await navigator.contacts.select(["tel"]);
+              if (!contato?.tel?.length) return;
+              if (contato.tel.length > 1) {
+                help.textContent = "Esse contato tem vários números. Informe o número que deseja usar.";
+                telefone.focus();
+                return;
+              }
+              const numero = contato.tel[0].trim();
+              telefone.value = numero.startsWith("+") ? numero : "+55 " + numero;
+              atualizarDestino();
+            } catch {
+              help.textContent = "Informe o número com o código do país e o DDD.";
+            }
+          };
+          item.append(escolher);
+        }
+        item.append(direto);
         log.scrollTop = log.scrollHeight;
         return;
       }
