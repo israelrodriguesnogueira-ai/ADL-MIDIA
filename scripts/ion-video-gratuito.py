@@ -58,11 +58,18 @@ def main():
         narration = temp / "narracao.wav"
         full_text = " ".join(caption for _, caption in SCENES)
         run(["espeak-ng", "-v", "pt-br", "-s", "155", "-w", str(narration), full_text])
+        # Evita cortar a narracao quando a sintese ultrapassa 15 segundos.
+        audio_info = json.loads(run(["ffprobe", "-v", "error", "-show_entries",
+            "format=duration", "-of", "json", str(narration)]).stdout)
+        speech_seconds = float(audio_info["format"]["duration"])
+        rate = max(1.0, speech_seconds / 14.5)
+        if rate > 2.0:
+            raise SystemExit(f"Narracao longa demais ({speech_seconds:.1f}s); reduza o roteiro.")
         cmd = [
             "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
             "-f", "lavfi", "-i", "color=c=0x0b172b:s=720x1280:r=25:d=15",
             "-i", str(narration), "-filter_complex",
-            "[0:v]" + ",".join(filters) + "[v];[1:a]apad=whole_dur=15[a]",
+            "[0:v]" + ",".join(filters) + "[v];[1:a]atempo=" + f"{rate:.5f}" + ",apad=whole_dur=15[a]",
             "-map", "[v]", "-map", "[a]", "-c:v", "libx264",
             "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac",
             "-b:a", "128k", "-t", "15", "-movflags", "+faststart", str(out)
