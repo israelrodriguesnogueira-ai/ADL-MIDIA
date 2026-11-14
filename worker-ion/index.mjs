@@ -456,7 +456,8 @@ function loginPage(clientId) {
       const videoRequest = /^(?:quero(?: que voce)? |(?:voce )?(?:pode|poderia|consegue) )?(?:gere|gera|gerar|faca|faz|fazer|crie|cria|criar|produza|produzir|criom|criou) (?:para mim )?(?:um )?(?:video|short)(?: vertical)?(?: para mim)?(?: (.+))?$/.exec(command);
       // Dictation can add words before the verb and move modifiers after the topic.
       const trafficRequest = !scriptParts.length
-        && /\\b(?:gere|gera|gerar|faca|faz|fazer|crie|cria|criar|produza|produzir|criom|criacao)\\b/.test(command)
+        && (/\b(?:gere|gera|gerar|faca|faz|fazer|crie|cria|criar|produza|produzir|criom|criacao|quero|preciso)\b/.test(command)
+          || /\b(?:eu creio|eu crio|criei|criou)\b/.test(command))
         && /\\b(?:video|short)\\b/.test(command)
         && /\\b(?:transito|seguranca viaria)\\b/.test(command)
         && !/\\b(?:nao|sem|cancele)\\b/.test(command);
