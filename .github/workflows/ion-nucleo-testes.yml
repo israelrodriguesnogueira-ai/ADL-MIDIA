@@ -1,0 +1,23 @@
+name: ION - testes do núcleo e integração
+on:
+  pull_request:
+    paths:
+      - 'integracoes/ion-nucleo.mjs'
+      - 'integracoes/ion-video-dispatch-worker.mjs'
+      - 'tests/ion-nucleo.test.mjs'
+      - 'tests/ion-video-dispatch.test.mjs'
+      - '.github/workflows/ion-nucleo-testes.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Testar núcleo e despacho sem credenciais
+        run: node --test tests/ion-nucleo.test.mjs tests/ion-video-dispatch.test.mjs
