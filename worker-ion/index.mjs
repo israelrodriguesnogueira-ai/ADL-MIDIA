@@ -1,3 +1,4 @@
+import { identificarOperador } from "../integracoes/ion-roteador-operadores.mjs";
 import { protectOwnerRoute } from "../integracoes/ion-controle-dono.mjs";
 
 export default {
@@ -449,6 +450,8 @@ function loginPage(clientId) {
       return { item, body };
     }
 
+    ${identificarOperador.toString()}
+
     function parseCommand(request) {
       const quotedScript = /\\b(?:com\\s+(?:a\\s+)?frase|dizendo)\\s*:?\\s*(?:"([^"]+)"|“([^”]+)”|«([^»]+)»)/i.exec(request);
       const [instruction, ...scriptParts] = (quotedScript ? request.slice(0, quotedScript.index) : request).split(":");
@@ -515,7 +518,16 @@ function loginPage(clientId) {
         return;
       }
       if (!videoRequest && !trafficRequest) {
-        update("Posso criar um vídeo de teste ou montar um vídeo com suas frases. Exemplo: Crie um vídeo para mim: O primeiro passo é difícil. Tente mais uma vez.");
+        const areas = {
+          desenvolvimento: "desenvolvimento de software",
+          cientifico: "pesquisa científica",
+          financeiro: "análise financeira",
+          shopee: "gestão da Shopee",
+          midia: "produção de mídia",
+          geral: "conversa geral",
+        };
+        const { operador } = identificarOperador(request);
+        update("Entendi que o pedido é de " + areas[operador] + ". O executor desse pedido ainda não está conectado ao chat.");
         return;
       }
       if (trafficRequest) {
