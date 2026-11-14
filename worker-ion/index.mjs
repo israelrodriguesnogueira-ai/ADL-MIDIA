@@ -3,6 +3,7 @@ import { protectOwnerRoute } from "../integracoes/ion-controle-dono.mjs";
 export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
+    if (path === "/api/foto") return analisarFoto(request, env);
     if (path === "/api/video/transito") {
       if (request.method !== "POST") return new Response("Método indisponível.", { status: 405, headers: { Allow: "POST" } });
       const ownerEmail = env.ION_OWNER_EMAIL?.trim().toLowerCase();
@@ -87,6 +88,46 @@ export default {
     return verifyOwner(request);
   },
 };
+
+async function analisarFoto(request, env) {
+  const json = (body, status = 200) => Response.json(body, {
+    status, headers: { "Cache-Control": "no-store" },
+  });
+  if (request.method !== "POST") return json({ erro: "Método inválido." }, 405);
+  const email = env.ION_OWNER_EMAIL?.trim().toLowerCase();
+  const audience = env.ION_GOOGLE_CLIENT_ID?.trim();
+  if (!email || !audience) return json({ erro: "Acesso indisponível." }, 503);
+  return protectOwnerRoute({
+    owner: { issuer: GOOGLE_ISSUER, subject: email },
+    verifySession: () => verifyGoogleIdentity(request, audience),
+    audit: ({ actor, ...event }) => console.warn(JSON.stringify(event)),
+    action: "analisar_foto",
+    resource: "ion",
+  }, async () => {
+    if (!env.ION_AI || env.ION_VISION_FREE_ENABLED !== "true") {
+      return json({ erro: "A análise de fotos aguarda ativação no Cloudflare." }, 503);
+    }
+    const pergunta = request.headers.get("X-ION-Pergunta");
+    if (!pergunta || pergunta.length > 6000) return json({ erro: "Pergunta inválida." }, 400);
+    const tamanho = Number(request.headers.get("Content-Length"));
+    if (tamanho > 2_000_000) return json({ erro: "Foto grande demais." }, 413);
+    const image = new Uint8Array(await request.arrayBuffer());
+    if (image.length < 3 || image.length > 2_000_000 || image[0] !== 255 || image[1] !== 216 || image[2] !== 255) {
+      return json({ erro: "Não consegui receber a foto em JPEG." }, 400);
+    }
+    try {
+      const resposta = await env.ION_AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
+        image: Array.from(image),
+        prompt: "Responda em português brasileiro sobre esta foto. Descreva apenas o que consegue observar e informe incertezas. Pergunta: " + decodeURIComponent(pergunta),
+        max_tokens: 350,
+      });
+      if (typeof resposta?.response !== "string" || !resposta.response.trim()) throw Error();
+      return json({ texto: resposta.response });
+    } catch {
+      return json({ erro: "O modelo de visão não respondeu. Tente novamente." }, 502);
+    }
+  })(request);
+}
 
 const GOOGLE_ISSUER = "https://accounts.google.com";
 const GOOGLE_KEYS_URL = "https://www.googleapis.com/oauth2/v3/certs";
@@ -529,11 +570,11 @@ function loginPage(clientId) {
         window.location.assign(new URL("gerador", central.url).href);
         return;
       }
-      if (textFile || (file && (!videoRequest || trafficRequest))) {
+      if (textFile || (attachment && (!request || trafficRequest))) {
         const photo = Boolean(attachment);
         remove.click();
         update(photo
-          ? "Foto adicionada nesta sessão. Use Baixar foto para salvar. A análise da imagem ainda não está disponível."
+          ? "Foto adicionada nesta sessão. Use Baixar foto para salvar. Para analisar, pergunte o que aparece nela."
           : "Arquivo adicionado nesta sessão. Use Baixar arquivo para salvar.");
         return;
       }
@@ -541,13 +582,9 @@ function loginPage(clientId) {
       const respostaAnterior = current.at(-3);
       const confirmaFoto = /^(?:sim|isso|isso mesmo|exato|exatamente|correto)$/.test(command)
         && respostaAnterior?.who === "Ion"
-        && respostaAnterior.text.includes("A análise visual ainda não está disponível");
-      if (confirmaFoto && fotoAnterior) {
-        update("Entendi. Você quer identificar o que aparece na foto. A análise visual ainda não está disponível.");
-        return;
-      }
+        && /(?:análise (?:visual|de fotos)|analisar a foto|modelo de visão)/i.test(respostaAnterior.text);
       if (!videoRequest && !trafficRequest && fotoAnterior
-          && /\\b(?:o que (?:e|tem|aparece)|qual (?:e|seria)|identifi\\w*|analis\\w*|descrev\\w*|descri\\w*|foto|imagem)\\b/.test(command)) {
+          && (attachment || confirmaFoto || /\\b(?:o que (?:e|tem|aparece)|qual (?:e|seria)|identifi\\w*|analis\\w*|descrev\\w*|descri\\w*|foto|imagem)\\b/.test(command))) {
         if (/\\b(?:baix\\w*|salv\\w*|abr\\w*)\\b/.test(command)) {
           const url = URL.createObjectURL(fotoAnterior);
           videoUrls.push(url);
@@ -558,7 +595,35 @@ function loginPage(clientId) {
           item.append(download);
           update("Aqui está a última foto enviada nesta conversa.");
         } else {
-          update("Sua pergunta se refere à última foto enviada nesta conversa. A análise visual ainda não está disponível.");
+          if (attachment) remove.click();
+          send.disabled = microphone.disabled = true;
+          body.textContent = "Analisando a foto…";
+          try {
+            const foto = await createImageBitmap(fotoAnterior);
+            const tela = document.createElement("canvas");
+            try {
+              const escala = Math.min(1, 1024 / Math.max(foto.width, foto.height));
+              tela.width = Math.max(1, Math.round(foto.width * escala));
+              tela.height = Math.max(1, Math.round(foto.height * escala));
+              tela.getContext("2d").drawImage(foto, 0, 0, tela.width, tela.height);
+            } finally { foto.close(); }
+            const jpeg = await new Promise(resolve => tela.toBlob(resolve, "image/jpeg", .82));
+            if (!jpeg) throw Error();
+            const resposta = await fetch("/api/foto", {
+              method: "POST",
+              headers: {
+                Authorization: "Bearer " + credential,
+                "X-ION-Pergunta": encodeURIComponent(confirmaFoto ? "O que aparece nesta foto?" : request),
+              },
+              body: jpeg,
+            });
+            const payload = await resposta.json();
+            update(resposta.ok ? payload.texto : payload.erro || "Não consegui analisar a foto.");
+          } catch {
+            update("Não consegui preparar ou enviar a foto para análise.");
+          } finally {
+            send.disabled = microphone.disabled = false;
+          }
         }
         log.scrollTop = log.scrollHeight;
         return;
