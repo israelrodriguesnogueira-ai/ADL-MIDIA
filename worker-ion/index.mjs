@@ -202,7 +202,7 @@ async function responderConversa(request, env) {
         messages: [{
           role: "system",
           content: "Você é o ION. Responda em português brasileiro e use o contexto da conversa. "
-            + "Você pode explicar, analisar texto e elaborar roteiros nesta conversa. "
+            + "Você pode explicar, analisar texto, elaborar roteiros e produzir código. Quando pedirem um programa ou arquivo de código, entregue o conteúdo completo em um bloco de código identificado pela linguagem, pronto para baixar no menu da resposta. "
             + "Para manutenção automotiva, diferencie correia dentada, que sincroniza virabrequim e comando de válvulas, da correia de acessórios, que pode acionar o alternador. "
             + "Para marcas de sincronismo, torques e procedimentos específicos, só dê instruções fundamentadas em documentação técnica aplicável. Se ela não estiver disponível na conversa, peça modelo, ano, código do motor e o manual ou a página relevante. "
             + "Não afirme ter criado arquivos, consultado fontes externas ou executado tarefas sem confirmação do sistema.",
@@ -772,6 +772,23 @@ function loginPage(clientId) {
             opcoes.open = false;
             input.value = pedido;
             form.requestSubmit();
+          }),
+          botao("Baixar arquivo", "Baixar código ou texto da resposta", () => {
+            const texto = body.textContent;
+            const codigo = texto.match(/\`\`\`([a-z0-9_+-]*)[ \\t]*\\r?\\n([\\s\\S]*?)\\r?\\n\`\`\`/i);
+            const extensoes = new Map([["python", "py"], ["py", "py"], ["javascript", "js"], ["js", "js"],
+              ["typescript", "ts"], ["ts", "ts"], ["html", "html"], ["css", "css"], ["json", "json"],
+              ["sql", "sql"], ["java", "java"], ["cpp", "cpp"], ["c", "c"], ["markdown", "md"]]);
+            const extensao = extensoes.get(codigo?.[1].toLowerCase()) || "txt";
+            const url = URL.createObjectURL(new Blob([codigo?.[2] ?? texto], { type: "text/plain;charset=utf-8" }));
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "ion-resposta." + extensao;
+            item.append(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 30000);
+            opcoes.open = false;
           }),
           botao("Buscar na web", "Abrir busca na web", () => {
             const termo = window.prompt("Revise os termos que serão enviados ao Google.", pedidoDaResposta());
