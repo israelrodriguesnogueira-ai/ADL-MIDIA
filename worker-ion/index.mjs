@@ -538,6 +538,14 @@ function loginPage(clientId) {
         return;
       }
       const fotoAnterior = ultimaFotoPorConversa.get(current);
+      const respostaAnterior = current.at(-3);
+      const confirmaFoto = /^(?:sim|isso|isso mesmo|exato|exatamente|correto)$/.test(command)
+        && respostaAnterior?.who === "Ion"
+        && respostaAnterior.text.includes("A análise visual ainda não está disponível");
+      if (confirmaFoto && fotoAnterior) {
+        update("Entendi. Você quer identificar o que aparece na foto. A análise visual ainda não está disponível.");
+        return;
+      }
       if (!videoRequest && !trafficRequest && fotoAnterior
           && /\\b(?:o que (?:e|tem|aparece)|qual (?:e|seria)|identifi\\w*|analis\\w*|descrev\\w*|descri\\w*|foto|imagem)\\b/.test(command)) {
         if (/\\b(?:baix\\w*|salv\\w*|abr\\w*)\\b/.test(command)) {
