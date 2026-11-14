@@ -218,12 +218,20 @@ async function responderConversa(request, env) {
 async function consultarPrevisao(mensagens) {
   const pedido = mensagens.at(-1).content.trim();
   const perguntaCidade = "Qual cidade e estado você quer consultar para a previsão do tempo?";
-  const continuacao = mensagens.at(-2)?.content === perguntaCidade;
-  const clima = /previs[aã]o do tempo|vai chover|como est[aá] o tempo/i;
+  const anteriores = mensagens.slice(0, -1);
+  const continuacao = anteriores.at(-1)?.role === "assistant" && anteriores.at(-1)?.content === perguntaCidade;
+  const clima = /previs[aã]o (?:do tempo|para hoje|para amanh[ãa])|vai chover|como est[aá] o tempo/i;
   if (!continuacao && !clima.test(pedido)) return null;
-  const local = (continuacao && !clima.test(pedido) ? pedido : pedido.match(/\b(?:em|para)\s+(.+)$/i)?.[1] || "")
-    .replace(/\b(?:para\s+)?(?:hoje|amanh[ãa])\b/gi, "").replace(/[?.!]\s*$/, "").trim();
-  const anterior = mensagens.at(-3)?.content || "";
+  const limpar = texto => texto.replace(/\b(?:para\s+)?(?:hoje|amanh[ãa])\b/gi, "").replace(/[?.!]\s*$/, "").trim();
+  const localDeclarado = texto => texto.match(/\b(?:estou|moro|fico)\s+em\s+(.+)$/i)?.[1];
+  const anterior = [...anteriores].reverse().find(m => m.role === "user" && clima.test(m.content))?.content || "";
+  const cidadeInformada = [...anteriores].reverse()
+    .filter(m => m.role === "user")
+    .map(m => localDeclarado(m.content) || (clima.test(m.content) ? m.content.match(/\bem\s+(.+)$/i)?.[1] : null))
+    .find(t => t && limpar(t));
+  const local = limpar(continuacao && !clima.test(pedido)
+    ? localDeclarado(pedido) || pedido
+    : pedido.match(/\bem\s+(.+)$/i)?.[1] || cidadeInformada || "");
   const amanha = /\bamanh[ãa]/i.test(continuacao ? anterior : pedido);
   if (!local || local.length > 120) return perguntaCidade;
   try {
