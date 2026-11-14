@@ -514,6 +514,7 @@ function loginPage(clientId) {
       recognition?.abort();
       recognition = null;
       microphone.setAttribute("aria-pressed", "false");
+      pararLeitura();
       current = chat;
       textFile = null;
       attachment = null;
@@ -629,6 +630,16 @@ function loginPage(clientId) {
       }
     };
 
+    const leitor = window.speechSynthesis;
+    let leitura;
+    function pararLeitura() {
+      if (!leitura) return;
+      const anterior = leitura;
+      leitura = null;
+      anterior.botao.textContent = "Ouvir resposta";
+      leitor.cancel();
+    }
+
     function message(who, content) {
       const item = document.createElement("li");
       item.className = who === "Você" ? "msg-user" : "msg-ion";
@@ -637,9 +648,41 @@ function loginPage(clientId) {
       const body = document.createElement("p");
       body.textContent = content;
       item.append(label, body);
+      let ouvir;
+      if (who === "Ion" && leitor && window.SpeechSynthesisUtterance) {
+        ouvir = document.createElement("button");
+        ouvir.type = "button";
+        ouvir.textContent = "Ouvir resposta";
+        ouvir.hidden = !content.trim() || content === "Entendendo seu pedido…";
+        ouvir.onclick = () => {
+          const jaLendo = leitura?.botao === ouvir;
+          pararLeitura();
+          if (jaLendo) return;
+          const texto = body.textContent.replace(/https?:\\/\\/\\S+/g, "").replace(/[*_#]/g, "").trim();
+          if (!texto) return;
+          const fala = new SpeechSynthesisUtterance(texto);
+          fala.lang = "pt-BR";
+          const voz = leitor.getVoices().find(v => /^pt[-_]br$/i.test(v.lang) && v.localService);
+          if (voz) fala.voice = voz;
+          leitura = { fala, botao: ouvir };
+          ouvir.textContent = "Parar leitura";
+          const encerrar = () => {
+            if (leitura?.fala !== fala) return;
+            leitura = null;
+            ouvir.textContent = "Ouvir resposta";
+          };
+          fala.onend = encerrar;
+          fala.onerror = evento => {
+            if (leitura?.fala === fala) help.textContent = "Não foi possível reproduzir a voz neste navegador.";
+            encerrar();
+          };
+          leitor.speak(fala);
+        };
+        item.append(ouvir);
+      }
       log.append(item);
       log.scrollTop = log.scrollHeight;
-      return { item, body };
+      return { item, body, ouvir };
     }
 
     function parseCommand(request) {
@@ -687,11 +730,12 @@ function loginPage(clientId) {
       current.push({who: "Você", text: request || file.name});
       saveHistory();
       input.value = "";
-      const { item, body } = message("Ion", "Entendendo seu pedido…");
+      const { item, body, ouvir } = message("Ion", "Entendendo seu pedido…");
       const record = {who: "Ion", text: ""};
       current.push(record);
       const update = (reply) => {
         body.textContent = reply;
+        if (ouvir) ouvir.hidden = !reply.trim();
         record.text = reply;
         saveHistory();
       };
