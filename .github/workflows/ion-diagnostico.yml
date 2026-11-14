@@ -169,6 +169,8 @@ jobs:
             if (typeof id === "string" && /^[a-zA-Z0-9-]+$/.test(id)) {
               await api(endpoint + "/" + id, "DELETE").catch(() => {});
             }
+            // Encerra a captura mesmo se o WebSocket mantiver recursos ativos.
+            process.exit(process.exitCode ?? 0);
           }
           JS
 
