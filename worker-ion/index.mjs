@@ -260,7 +260,7 @@ function loginPage(clientId) {
       <div class="ion-compose">
         <button id="mais-ion" type="button" aria-label="Anexar câmera, fotos ou arquivos" aria-expanded="false" aria-controls="anexos-ion">+</button>
         <label for="pedido-ion" class="ion-label">Mensagem para o Ion</label>
-        <textarea id="pedido-ion" rows="2" placeholder="Mensagem para o Ion" maxlength="500" required></textarea>
+        <textarea id="pedido-ion" rows="2" placeholder="Mensagem para o Ion" maxlength="500"></textarea>
         <button id="voz-ion" type="button" aria-label="Iniciar ditado em português" aria-pressed="false">🎙</button>
         <button id="enviar-ion" type="submit">Enviar</button>
         <button id="cancelar-video" type="button" hidden>Parar</button>
@@ -305,6 +305,7 @@ function loginPage(clientId) {
     } catch {}
     let current = saved[0] ?? [];
     let attachment = null;
+    let textFile = null;
     let recording;
     const cancelVideo = get("cancelar-video");
     cancelVideo.onclick = () => {
@@ -324,6 +325,7 @@ function loginPage(clientId) {
       recognition = null;
       microphone.setAttribute("aria-pressed", "false");
       current = chat;
+      textFile = null;
       attachment = null;
       attachmentStatus.textContent = "";
       remove.hidden = true;
@@ -372,26 +374,27 @@ function loginPage(clientId) {
         attach.setAttribute("aria-expanded", "false");
         if (file.type.startsWith("image/") && file.size <= 10_000_000) {
           attachment = file;
+          textFile = null;
           attachmentStatus.textContent = "Foto escolhida: " + file.name;
           remove.hidden = false;
           return;
         }
-        if (/\\.txt$/i.test(file.name) && file.size <= 4_000) {
-          const script = (await file.text()).trim();
-          if (script.length && script.length <= 480) {
-            input.value = "Crie um vídeo: " + script;
-            return;
-          }
+        if (/\\.txt$/i.test(file.name) && file.size > 0 && file.size <= 1_000_000) {
+          attachment = null;
+          textFile = file;
+          attachmentStatus.textContent = "Arquivo escolhido: " + file.name;
+          remove.hidden = false;
+          return;
         }
-        help.textContent = "Use uma foto de até 10 MB ou um arquivo TXT com até 480 caracteres.";
+        help.textContent = "Use uma foto de até 10 MB ou um TXT de até 1 MB.";
       };
     }
     const remove = document.createElement("button");
     remove.type = "button";
     remove.hidden = true;
-    remove.textContent = "Remover foto";
+    remove.textContent = "Remover anexo";
     attachmentStatus.after(remove);
-    remove.onclick = () => { attachment = null; attachmentStatus.textContent = ""; remove.hidden = true; };
+    remove.onclick = () => { attachment = null; textFile = null; attachmentStatus.textContent = ""; remove.hidden = true; };
 
     const microphone = get("voz-ion");
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -470,9 +473,27 @@ function loginPage(clientId) {
     form.onsubmit = async event => {
       event.preventDefault();
       const request = input.value.trim();
-      if (!request || send.disabled) return;
-      message("Você", request);
-      current.push({who: "Você", text: request});
+      const file = attachment || textFile;
+      if ((!request && !file) || send.disabled) return;
+      const { item: sent } = message("Você", request || file.name);
+      if (file) {
+        const url = URL.createObjectURL(file);
+        videoUrls.push(url);
+        if (attachment) {
+          const preview = document.createElement("img");
+          preview.src = url;
+          preview.alt = file.name;
+          preview.style.cssText = "display:block;max-width:100%;max-height:22rem;object-fit:contain";
+          sent.append(preview);
+        }
+        const download = document.createElement("a");
+        download.href = url;
+        download.download = file.name;
+        download.textContent = attachment ? "Baixar foto" : "Baixar arquivo";
+        sent.append(download);
+        log.scrollTop = log.scrollHeight;
+      }
+      current.push({who: "Você", text: request || file.name});
       saveHistory();
       input.value = "";
       const { item, body } = message("Ion", "Entendendo seu pedido…");
@@ -504,6 +525,14 @@ function loginPage(clientId) {
       if (/^(abra|abrir|acesse|acessar) (o )?gerador( de videos?)?$/.test(command) && central) {
         update("Abrindo o gerador.");
         window.location.assign(new URL("gerador", central.url).href);
+        return;
+      }
+      if (textFile || (file && (!videoRequest || trafficRequest))) {
+        const photo = Boolean(attachment);
+        remove.click();
+        update(photo
+          ? "Foto adicionada nesta sessão. Use Baixar foto para salvar. A análise da imagem ainda não está disponível."
+          : "Arquivo adicionado nesta sessão. Use Baixar arquivo para salvar.");
         return;
       }
       if (!videoRequest && !trafficRequest) {
