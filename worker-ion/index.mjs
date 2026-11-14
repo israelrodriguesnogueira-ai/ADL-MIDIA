@@ -420,6 +420,11 @@ function loginPage(clientId) {
   #enviar-ion { background: #a8d1ff; color: #101827; }
   #cancelar-video { background: #8b3030; color: white; }
   button[hidden] { display: none; }
+  .ion-resposta-acoes:not([hidden]) { display: flex; gap: .25rem; flex-wrap: wrap; align-items: center; margin-top: .4rem; }
+  .ion-resposta-acoes button, .ion-resposta-acoes summary { min-height: 44px; border-radius: .6rem; border: 1px solid #3b4b66; background: #19253a; color: #f3f6fc; padding: 0 .55rem; }
+  .ion-resposta-acoes summary { display: flex; align-items: center; cursor: pointer; }
+  .ion-resposta-acoes [aria-pressed="true"] { border-color: #a8d1ff; background: #243a55; }
+  .ion-resposta-acoes details[open] button { display: flex; margin-top: .25rem; }
 </style>
 <main>
   <section id="entrada">
@@ -523,7 +528,7 @@ function loginPage(clientId) {
       input.value = "";
       log.replaceChildren();
       videoUrls.splice(0).forEach(url => URL.revokeObjectURL(url));
-      for (const entry of chat) message(entry.who, entry.text);
+      for (const entry of chat) message(entry.who, entry.text, entry);
       if (menu.open) menu.close();
     }
     get("novo-ion").onclick = () => openConversation([]);
@@ -640,7 +645,7 @@ function loginPage(clientId) {
       leitor.cancel();
     }
 
-    function message(who, content) {
+    function message(who, content, entrada) {
       const item = document.createElement("li");
       item.className = who === "Você" ? "msg-user" : "msg-ion";
       const label = document.createElement("strong");
@@ -678,11 +683,84 @@ function loginPage(clientId) {
           };
           leitor.speak(fala);
         };
-        item.append(ouvir);
+      }
+      let acoes;
+      if (who === "Ion") {
+        acoes = document.createElement("div");
+        acoes.className = "ion-resposta-acoes";
+        acoes.hidden = !content.trim() || content === "Entendendo seu pedido…";
+        const botao = (texto, titulo, acao) => {
+          const controle = document.createElement("button");
+          controle.type = "button";
+          controle.textContent = texto;
+          controle.title = titulo;
+          controle.setAttribute("aria-label", titulo);
+          controle.onclick = acao;
+          return controle;
+        };
+        acoes.append(botao("⧉", "Copiar resposta", async () => {
+          try {
+            await navigator.clipboard.writeText(body.textContent);
+            help.textContent = "Resposta copiada.";
+          } catch {
+            help.textContent = "Selecione o texto para copiar manualmente.";
+          }
+        }));
+        if (ouvir) acoes.append(ouvir);
+        const votos = [["👍", "Gostei", "positivo"], ["👎", "Não gostei", "negativo"]];
+        const atualizarVotos = () => {
+          for (const [controle, valor] of controles) {
+            controle.setAttribute("aria-pressed", String(entrada.voto === valor));
+          }
+        };
+        const controles = votos.map(([icone, titulo, valor]) => {
+          const controle = botao(icone, titulo, () => {
+            entrada.voto = entrada.voto === valor ? null : valor;
+            atualizarVotos();
+            saveHistory();
+          });
+          acoes.append(controle);
+          return [controle, valor];
+        });
+        atualizarVotos();
+        const opcoes = document.createElement("details");
+        const resumo = document.createElement("summary");
+        resumo.textContent = "⋯";
+        resumo.setAttribute("aria-label", "Mais ações da resposta");
+        opcoes.append(resumo);
+        const pedidoDaResposta = () => {
+          const indice = current.indexOf(entrada);
+          return indice < 0 ? "" : current.slice(0, indice).reverse().find(msg => msg.who === "Você")?.text || "";
+        };
+        opcoes.append(
+          botao("Criar conversa a partir daqui", "Criar conversa a partir desta mensagem", () => {
+            const indice = current.indexOf(entrada);
+            if (indice < 0 || send.disabled) return;
+            openConversation(current.slice(0, indice + 1).map(msg => ({ ...msg })));
+            saveHistory();
+          }),
+          botao("Repetir pedido", "Repetir o pedido desta resposta", () => {
+            const pedido = pedidoDaResposta();
+            if (!pedido || send.disabled) return;
+            opcoes.open = false;
+            input.value = pedido;
+            form.requestSubmit();
+          }),
+          botao("Buscar na web", "Abrir busca na web", () => {
+            const termo = window.prompt("Revise os termos que serão enviados ao Google.", pedidoDaResposta());
+            if (!termo?.trim()) return;
+            const busca = new URL("https://www.google.com/search");
+            busca.searchParams.set("q", termo.trim());
+            window.open(busca.href, "_blank", "noopener,noreferrer");
+            opcoes.open = false;
+          })
+        );
+        acoes.append(opcoes);
+        item.append(acoes);
       }
       log.append(item);
       log.scrollTop = log.scrollHeight;
-      return { item, body, ouvir };
+      return { item, body, ouvir, acoes };
     }
 
     function parseCommand(request) {
@@ -730,12 +808,13 @@ function loginPage(clientId) {
       current.push({who: "Você", text: request || file.name});
       saveHistory();
       input.value = "";
-      const { item, body, ouvir } = message("Ion", "Entendendo seu pedido…");
       const record = {who: "Ion", text: ""};
+      const { item, body, ouvir, acoes } = message("Ion", "Entendendo seu pedido…", record);
       current.push(record);
       const update = (reply) => {
         body.textContent = reply;
         if (ouvir) ouvir.hidden = !reply.trim();
+        if (acoes) acoes.hidden = !reply.trim();
         record.text = reply;
         saveHistory();
       };
