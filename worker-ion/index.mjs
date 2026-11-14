@@ -7,7 +7,7 @@ export default {
       if (request.method !== "POST") return new Response("Método indisponível.", { status: 405, headers: { Allow: "POST" } });
       const ownerEmail = env.ION_OWNER_EMAIL?.trim().toLowerCase();
       const audience = env.ION_GOOGLE_CLIENT_ID?.trim();
-      if (!ownerEmail?.endsWith("@gmail.com") || !/^[a-z0-9-]+\\.apps\\.googleusercontent\\.com$/.test(audience ?? "")) {
+      if (!ownerEmail?.endsWith("@gmail.com") || !/^[a-z0-9-]+\.apps\.googleusercontent\.com$/.test(audience ?? "")) {
         return Response.json({ erro: "Autenticação não configurada." }, { status: 503 });
       }
       const ownerRoute = protectOwnerRoute({
