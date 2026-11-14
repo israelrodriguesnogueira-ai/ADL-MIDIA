@@ -128,21 +128,36 @@ async function analisarFoto(request, env) {
         ] }],
         max_tokens: 350,
       };
-      let resposta;
+      const extrairTexto = resposta => resposta?.response ?? resposta?.choices?.[0]?.message?.content;
+      const erroDeLicenca = erro => /(?:\bagree\b|license|licence|acceptable use|terms of use)/i.test(String(erro?.message));
+      const executar = async entrada => {
+        try {
+          return await env.ION_AI.run(modelo, entrada);
+        } catch (erro) {
+          if (!erroDeLicenca(erro)) throw erro;
+          await env.ION_AI.run(modelo, { prompt: "agree" });
+          return env.ION_AI.run(modelo, entrada);
+        }
+      };
+      let texto;
       try {
-        resposta = await env.ION_AI.run(modelo, dados);
+        texto = extrairTexto(await executar(dados));
       } catch (erro) {
-        // O proprietário autorizou a licença. Envie o aceite apenas se o provedor o exigir.
-        if (!/(?:\bagree\b|(?:license|terms|acceptable use).*(?:accept|required))/i.test(String(erro?.message))) throw erro;
-        await env.ION_AI.run(modelo, { prompt: "agree" });
-        resposta = await env.ION_AI.run(modelo, dados);
+        if (!/(?:schema|validation|invalid input|required property|must have|required field)/i.test(String(erro?.message))) throw erro;
+        texto = extrairTexto(await executar({
+          prompt: dados.messages[0].content[0].text,
+          image: Array.from(image),
+          max_tokens: dados.max_tokens,
+        }));
       }
-      const texto = resposta?.response ?? resposta?.choices?.[0]?.message?.content;
       if (typeof texto !== "string" || !texto.trim()) throw new Error("empty_response");
       return json({ texto });
     } catch (erro) {
       console.warn(JSON.stringify({ event: "ion.vision_failed", code: Number.isInteger(erro?.code) ? erro.code : undefined }));
-      return json({ erro: "O modelo de visão não respondeu. Tente novamente." }, 502);
+      if (/(?:quota|daily limit|neurons|rate limit)/i.test(String(erro?.message))) {
+        return json({ erro: "O Cloudflare limitou o uso do modelo. O ION continua no plano gratuito." }, 429);
+      }
+      return json({ erro: "O Cloudflare não concluiu a análise da foto." }, 502);
     }
   })(request);
 }
