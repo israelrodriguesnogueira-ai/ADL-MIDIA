@@ -282,7 +282,7 @@ function loginPage(clientId) {
   const status = document.getElementById("status");
   document.getElementById("sair").addEventListener("click", () => window.location.reload());
 
-  function connectCommands(areas) {
+  function connectCommands(areas, credential) {
     const central = areas.find(area => area.nome === "Central 6D" && area.url);
     const input = document.getElementById("pedido-ion");
     const send = document.getElementById("enviar-ion");
@@ -507,6 +507,36 @@ function loginPage(clientId) {
         update("Posso criar um vídeo de teste ou montar um vídeo com suas frases. Exemplo: Crie um vídeo para mim: O primeiro passo é difícil. Tente mais uma vez.");
         return;
       }
+      if (trafficRequest) {
+        send.disabled = trafficButton.disabled = microphone.disabled = true;
+        update("Solicitando a geração do vídeo narrado no servidor…");
+        try {
+          const response = await fetch("/api/video/transito", {
+            method: "POST",
+            headers: { Authorization: "Bearer " + credential },
+            cache: "no-store",
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (response.ok && payload.status === "solicitado") {
+            update("Geração solicitada ao GitHub Actions. O vídeo ainda não está pronto; acompanhe a execução no link abaixo.");
+            const link = document.createElement("a");
+            link.href = payload.acompanhamento;
+            link.textContent = "Acompanhar geração e baixar MP4";
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            item.append(link);
+          } else {
+            update(response.status === 401
+              ? "Sua sessão expirou. Entre novamente para autorizar a execução."
+              : "Não foi possível iniciar a geração: " + (payload.erro || "erro HTTP " + response.status) + ". Nenhum vídeo foi produzido.");
+          }
+        } catch {
+          update("Falha de conexão com o gerador. Nenhum vídeo foi produzido.");
+        } finally {
+          send.disabled = trafficButton.disabled = microphone.disabled = false;
+        }
+        return;
+      }
       const script = scriptParts.join(":").trim();
       let scenes = script.match(/[^.!?\\n]+[.!?]*/g)?.map(line => line.trim()).filter(Boolean) ?? [];
       if ((scriptParts.length && !scenes.length) || scenes.length > 6 || scenes.some(line => line.length > 100)) {
@@ -679,8 +709,8 @@ function loginPage(clientId) {
     }
   }
 
-  function showPanel(areas) {
-    connectCommands(areas);
+  function showPanel(areas, credential) {
+    connectCommands(areas, credential);
     const list = document.getElementById("areas");
     list.replaceChildren();
     for (const area of areas) {
@@ -717,7 +747,7 @@ function loginPage(clientId) {
             cache: "no-store",
           });
           if (result.ok) {
-            showPanel((await result.json()).areas);
+            showPanel((await result.json()).areas, credential);
             return;
           }
           status.textContent = result.status === 401 ? "Sessão Google inválida ou expirada (401). Tente entrar novamente."
