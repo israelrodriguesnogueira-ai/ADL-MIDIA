@@ -1,0 +1,27 @@
+name: Testes do roteador ION
+on:
+  push:
+    branches: [main]
+    paths:
+      - "integracoes/ion-roteador-operadores.mjs"
+      - "integracoes/ion-motor-worker.mjs"
+      - "testes/ion-roteador-operadores.test.mjs"
+      - ".github/workflows/ion-roteador-testes.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verificar:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validar sintaxe
+        run: |
+          node --check integracoes/ion-roteador-operadores.mjs
+          node --check integracoes/ion-motor-worker.mjs
+      - name: Executar testes
+        run: node --test testes/ion-roteador-operadores.test.mjs
