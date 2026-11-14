@@ -24,10 +24,9 @@ jobs:
       - name: Instalar FFmpeg gratuito
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg espeak-ng fonts-dejavu-core
+          sudo apt-get install -y ffmpeg fonts-dejavu-core
       - name: Verificar ferramentas gratuitas
         run: |
-          command -v espeak-ng
           test -f /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
       - name: Verificar FFmpeg e FFprobe
         run: |
@@ -35,11 +34,20 @@ jobs:
           command -v ffprobe
           ffmpeg -version
           ffprobe -version
-      - name: Verificar sintetizador em português
+      - name: Preparar voz neural Faber em português brasileiro
         run: |
-          espeak-ng --voices=pt | head -n 8
+          python3 -m venv "$RUNNER_TEMP/ion-voice"
+          source "$RUNNER_TEMP/ion-voice/bin/activate"
+          python -m pip install piper-tts==1.8.0
+          model="$RUNNER_TEMP/pt_BR-faber-medium.onnx"
+          base="https://huggingface.co/rhasspy/piper-voices/resolve/6b9cfaacb4fb2e02a9621227e3c1a48bec9710c3/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx"
+          curl -fsSL --retry 2 --max-time 90 "$base?download=true" -o "$model"
+          curl -fsSL --retry 2 --max-time 30 "$base.json" -o "$model.json"
+          printf '%s  %s\n' 75e913eb463db0b6ac7ddf68d3e4c9ac19ace36dc3b710a81039b448352b8ffc "$model" fa8a8fecb01ae198bc416381e368d3206f85bad1449a0f11e1f6a9edf85a32f1 "$model.json" | sha256sum -c -
+          echo "ION_PIPER_MODEL=$model" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/ion-voice/bin" >> "$GITHUB_PATH"
       - name: Gerar MP4 vertical sem API paga
-        run: python3 scripts/ion-video-gratuito.py
+        run: python3 scripts/ion-video-gratuito.py --voz piper
       - name: Validar duração, resolução e fluxos
         run: |
           ffprobe -v error -show_entries format=duration -show_entries stream=codec_type,width,height -of json saida/ion-transito-15s.mp4
