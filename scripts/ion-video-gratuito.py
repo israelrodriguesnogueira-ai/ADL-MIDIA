@@ -24,8 +24,9 @@ def run(cmd, timeout=150):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--saida", default="saida/ion-transito-15s.mp4")
+    parser.add_argument("--voz", default="espeak", choices=["espeak", "piper"])
     args = parser.parse_args()
-    for command in ("ffmpeg", "ffprobe", "espeak-ng"):
+    for command in (("ffmpeg", "ffprobe", "espeak-ng") if args.voz == "espeak" else ("ffmpeg", "ffprobe", "piper")):
         if not shutil.which(command):
             raise SystemExit(f"Dependencia ausente: {command}")
     if not Path(FONT).exists():
@@ -57,7 +58,15 @@ def main():
             )
         narration = temp / "narracao.wav"
         full_text = " ".join(caption for _, caption in SCENES)
-        run(["espeak-ng", "-v", "pt-br", "-s", "155", "-w", str(narration), full_text])
+        if args.voz == "piper":
+            import os
+            model = os.environ.get("ION_PIPER_MODEL")
+            if not model or not Path(model).is_file():
+                raise SystemExit("Modelo Piper pt-BR ausente: configure ION_PIPER_MODEL com arquivo local .onnx")
+            subprocess.run(["piper", "--model", model, "--output_file", str(narration)],
+                           input=full_text, text=True, capture_output=True, check=True, timeout=150)
+        else:
+            run(["espeak-ng", "-v", "pt-br", "-s", "155", "-w", str(narration), full_text])
         # Evita cortar a narracao quando a sintese ultrapassa 15 segundos.
         audio_info = json.loads(run(["ffprobe", "-v", "error", "-show_entries",
             "format=duration", "-of", "json", str(narration)]).stdout)
@@ -69,7 +78,7 @@ def main():
             "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
             "-f", "lavfi", "-i", "color=c=0x0b172b:s=720x1280:r=25:d=15",
             "-i", str(narration), "-filter_complex",
-            "[0:v]" + ",".join(filters) + "[v];[1:a]atempo=" + f"{rate:.5f}" + ",apad=whole_dur=15[a]",
+            "[0:v]" + ",".join(filters) + "[v];[1:a]atempo=" + f"{rate:.5f}" + ",highpass=f=85,lowpass=f=6500,acompressor=threshold=0.1:ratio=2:attack=15:release=180,apad=whole_dur=15[a]",
             "-map", "[v]", "-map", "[a]", "-c:v", "libx264",
             "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac",
             "-b:a", "128k", "-t", "15", "-movflags", "+faststart", str(out)
