@@ -650,8 +650,8 @@ function loginPage(clientId) {
     };
     const preencherVozes = () => {
       const vozes = vozesBrasileiras();
-      get("preferencia-voz-ion").hidden = !vozes.length;
-      seletorVoz.replaceChildren(new Option("Automática", ""), ...vozes.map(voz => new Option(voz.name, voz.voiceURI)));
+      get("preferencia-voz-ion").hidden = false;
+      seletorVoz.replaceChildren(new Option("Faber (neural, português brasileiro)", ""), ...vozes.map(voz => new Option(voz.name, voz.voiceURI)));
       seletorVoz.value = vozes.some(voz => voz.voiceURI === vozSalva()) ? vozSalva() : "";
     };
     seletorVoz.onchange = () => {
@@ -667,7 +667,12 @@ function loginPage(clientId) {
       leitura = null;
       anterior.botao.textContent = "🔊";
       anterior.botao.setAttribute("aria-label", "Ouvir resposta");
-      leitor.cancel();
+      if (anterior.audio) {
+        anterior.audio.pause();
+        anterior.audio.remove();
+        URL.revokeObjectURL(anterior.url);
+      }
+      if (anterior.fala) leitor.cancel();
     }
 
     function message(who, content, entrada) {
@@ -679,26 +684,65 @@ function loginPage(clientId) {
       body.textContent = content;
       item.append(label, body);
       let ouvir;
-      if (who === "Ion" && leitor && window.SpeechSynthesisUtterance) {
+      if (who === "Ion") {
         ouvir = document.createElement("button");
         ouvir.type = "button";
         ouvir.textContent = "🔊";
         ouvir.title = "Ouvir resposta";
         ouvir.setAttribute("aria-label", "Ouvir resposta");
         ouvir.hidden = !content.trim() || content === "Entendendo seu pedido…";
-        ouvir.onclick = () => {
+        ouvir.onclick = async () => {
           const jaLendo = leitura?.botao === ouvir;
           pararLeitura();
           if (jaLendo) return;
           const texto = body.textContent.replace(/https?:\\/\\/\\S+/g, "").replace(/[*_#]/g, "").trim();
           if (!texto) return;
+          const vozes = vozesBrasileiras();
+          const preferida = vozes.find(v => v.voiceURI === vozSalva());
+          if (!preferida) {
+            const sessao = { botao: ouvir };
+            leitura = sessao;
+            ouvir.textContent = "■";
+            ouvir.setAttribute("aria-label", "Parar leitura");
+            help.textContent = "Preparando voz Faber. Na primeira vez, o modelo precisa ser baixado.";
+            try {
+              const piper = await import("https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.5/+esm");
+              if (leitura !== sessao) return;
+              const audioWav = await piper.predict({ text: texto, voiceId: "pt_BR-faber-medium" });
+              if (leitura !== sessao) return;
+              const audio = document.createElement("audio");
+              sessao.url = URL.createObjectURL(audioWav);
+              sessao.audio = audio;
+              audio.src = sessao.url;
+              audio.onended = () => { if (leitura === sessao) pararLeitura(); };
+              audio.onerror = () => {
+                if (leitura !== sessao) return;
+                pararLeitura();
+                help.textContent = "A voz Faber não pôde ser reproduzida.";
+              };
+              help.textContent = "";
+              try {
+                await audio.play();
+              } catch {
+                if (leitura !== sessao) return;
+                audio.controls = true;
+                item.append(audio);
+                help.textContent = "Toque no controle de áudio abaixo da resposta para ouvir.";
+              }
+            } catch {
+              if (leitura !== sessao) return;
+              pararLeitura();
+              help.textContent = "Não foi possível carregar a voz Faber. Tente novamente ou escolha uma voz do aparelho no menu do ION.";
+            }
+            return;
+          }
+          if (!leitor || !window.SpeechSynthesisUtterance) {
+            help.textContent = "A voz do aparelho não está disponível neste navegador.";
+            return;
+          }
           const fala = new SpeechSynthesisUtterance(texto);
           fala.lang = "pt-BR";
-          const vozes = vozesBrasileiras();
-          const voz = vozes.find(v => v.voiceURI === vozSalva())
-            || vozes.find(v => v.localService && /\\b(?:male|masculin[oa]|Felipe|Ricardo|Thiago|Antônio|Antonio|Fabio|Fábio)\\b/i.test(v.name))
-            || vozes.find(v => v.localService);
-          if (voz) fala.voice = voz;
+          fala.voice = preferida;
           leitura = { fala, botao: ouvir };
           ouvir.textContent = "■";
           ouvir.setAttribute("aria-label", "Parar leitura");
