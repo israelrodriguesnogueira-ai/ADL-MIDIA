@@ -1,0 +1,14 @@
+# Branch de produção no Cloudflare Workers Builds: ion/controle-dono.
+name = "ion-validacao"
+main = "index.mjs"
+compatibility_date = "2026-11-10"
+workers_dev = true
+preview_urls = false
+keep_vars = true
+
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+invocation_logs = false
