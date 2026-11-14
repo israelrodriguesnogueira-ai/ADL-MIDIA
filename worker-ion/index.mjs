@@ -641,7 +641,8 @@ function loginPage(clientId) {
       if (!leitura) return;
       const anterior = leitura;
       leitura = null;
-      anterior.botao.textContent = "Ouvir resposta";
+      anterior.botao.textContent = "🔊";
+      anterior.botao.setAttribute("aria-label", "Ouvir resposta");
       leitor.cancel();
     }
 
@@ -657,7 +658,9 @@ function loginPage(clientId) {
       if (who === "Ion" && leitor && window.SpeechSynthesisUtterance) {
         ouvir = document.createElement("button");
         ouvir.type = "button";
-        ouvir.textContent = "Ouvir resposta";
+        ouvir.textContent = "🔊";
+        ouvir.title = "Ouvir resposta";
+        ouvir.setAttribute("aria-label", "Ouvir resposta");
         ouvir.hidden = !content.trim() || content === "Entendendo seu pedido…";
         ouvir.onclick = () => {
           const jaLendo = leitura?.botao === ouvir;
@@ -670,11 +673,13 @@ function loginPage(clientId) {
           const voz = leitor.getVoices().find(v => /^pt[-_]br$/i.test(v.lang) && v.localService);
           if (voz) fala.voice = voz;
           leitura = { fala, botao: ouvir };
-          ouvir.textContent = "Parar leitura";
+          ouvir.textContent = "■";
+          ouvir.setAttribute("aria-label", "Parar leitura");
           const encerrar = () => {
             if (leitura?.fala !== fala) return;
             leitura = null;
-            ouvir.textContent = "Ouvir resposta";
+            ouvir.textContent = "🔊";
+            ouvir.setAttribute("aria-label", "Ouvir resposta");
           };
           fala.onend = encerrar;
           fala.onerror = evento => {
@@ -706,7 +711,6 @@ function loginPage(clientId) {
             help.textContent = "Selecione o texto para copiar manualmente.";
           }
         }));
-        if (ouvir) acoes.append(ouvir);
         const votos = [["👍", "Gostei", "positivo"], ["👎", "Não gostei", "negativo"]];
         const atualizarVotos = () => {
           for (const [controle, valor] of controles) {
@@ -723,6 +727,22 @@ function loginPage(clientId) {
           return [controle, valor];
         });
         atualizarVotos();
+        if (ouvir) acoes.append(ouvir);
+        acoes.append(botao("↑", "Compartilhar resposta", async () => {
+          const texto = body.textContent.trim();
+          if (!texto) return;
+          try {
+            const dados = { text: texto };
+            if (navigator.share && (!navigator.canShare || navigator.canShare(dados))) {
+              await navigator.share(dados);
+            } else {
+              await navigator.clipboard.writeText(texto);
+              help.textContent = "Resposta copiada. Cole no aplicativo em que quiser compartilhar.";
+            }
+          } catch (erro) {
+            if (erro?.name !== "AbortError") help.textContent = "Não foi possível compartilhar. Use Copiar resposta.";
+          }
+        }));
         const opcoes = document.createElement("details");
         const resumo = document.createElement("summary");
         resumo.textContent = "⋯";
