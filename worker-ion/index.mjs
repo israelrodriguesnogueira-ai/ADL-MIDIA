@@ -4,7 +4,9 @@ import { protectOwnerRoute } from "../integracoes/ion-controle-dono.mjs";
 export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
-    if (path === "/api/video/transito") {
+    const bento = path === "/api/video/bento";
+    if (bento || path === "/api/video/transito") {
+      const workflow = bento ? "ion-animacao-bento.yml" : "ion-video-gratuito.yml";
       if (request.method !== "POST") return new Response("Método indisponível.", { status: 405, headers: { Allow: "POST" } });
       const ownerEmail = env.ION_OWNER_EMAIL?.trim().toLowerCase();
       const audience = env.ION_GOOGLE_CLIENT_ID?.trim();
@@ -15,14 +17,14 @@ export default {
         owner: { issuer: GOOGLE_ISSUER, subject: ownerEmail },
         verifySession: () => verifyGoogleIdentity(request, audience),
         audit: ({ actor, ...event }) => console.warn(JSON.stringify(event)),
-        action: "solicitar_video_transito",
+        action: bento ? "solicitar_animacao_bento" : "solicitar_video_transito",
         resource: "ion",
       }, async () => {
         const token = env.ION_GITHUB_ACTIONS_TOKEN;
         if (!token) return Response.json({ erro: "Integração de vídeo não configurada." }, { status: 503 });
         let result;
         try {
-          result = await fetch("https://api.github.com/repos/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/ion-video-gratuito.yml/dispatches", {
+          result = await fetch("https://api.github.com/repos/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/" + workflow + "/dispatches", {
             method: "POST",
             headers: {
               Authorization: "Bearer " + token,
@@ -43,7 +45,7 @@ export default {
         return Response.json({
           status: "solicitado",
           detalhe: "Workflow acionado. O MP4 ainda precisa ser gerado e validado.",
-          acompanhamento: "https://github.com/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/ion-video-gratuito.yml",
+          acompanhamento: "https://github.com/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/" + workflow,
         }, { status: 202 });
       });
       return ownerRoute(request);
@@ -557,7 +559,12 @@ function loginPage(clientId) {
         window.location.assign(new URL("gerador", central.url).href);
         return;
       }
-      if (!videoRequest && !trafficRequest) {
+      const bentoRequest = /\\b(?:crie|cria|criar|faca|faz|fazer|gere|gerar|anime|animar|produza|quero)\\b/.test(command)
+        && /\\b(?:desenho|animacao|video)\\b/.test(command)
+        && /\\b(?:bento|cachorro)\\b/.test(command) && /\\bbola\\b/.test(command)
+        && !/\\b(?:nao|sem|cancele)\\b/.test(command)
+        && (!seconds || seconds === 60);
+      if (!videoRequest && !trafficRequest && !bentoRequest) {
         const areas = {
           desenvolvimento: "desenvolvimento de software",
           cientifico: "pesquisa científica",
@@ -581,13 +588,13 @@ function loginPage(clientId) {
         update("Entendi que o pedido é de " + areas[operador] + ". O executor desse pedido ainda não está conectado ao chat.");
         return;
       }
-      if (trafficRequest) {
+      if (trafficRequest || bentoRequest) {
         send.disabled = microphone.disabled = true;
         cancelVideo.hidden = false;
         recording = new AbortController();
-        update("Solicitando a geração do vídeo narrado no servidor…");
+        update(bentoRequest ? "Solicitando a animação no servidor…" : "Solicitando a geração do vídeo narrado no servidor…");
         try {
-          const response = await fetch("/api/video/transito", {
+          const response = await fetch(bentoRequest ? "/api/video/bento" : "/api/video/transito", {
             signal: recording.signal,
             method: "POST",
             headers: { Authorization: "Bearer " + credential },
