@@ -450,7 +450,12 @@ function loginPage(clientId) {
     }
 
     function parseCommand(request) {
-      const [instruction, ...scriptParts] = request.split(":");
+      const quotedScript = /\\b(?:com\\s+(?:a\\s+)?frase|dizendo)\\s*:?\\s*(?:"([^"]+)"|“([^”]+)”|«([^»]+)»)/i.exec(request);
+      const [instruction, ...scriptParts] = (quotedScript ? request.slice(0, quotedScript.index) : request).split(":");
+      if (quotedScript) scriptParts.push(quotedScript[1] || quotedScript[2] || quotedScript[3]);
+      const options = quotedScript ? request.slice(0, quotedScript.index) + " " + request.slice(quotedScript.index + quotedScript[0].length) : instruction;
+      const seconds = Number(/\\b(\\d+)\\s*(?:segundos?|s)\\b/i.exec(options)?.[1] ?? 0);
+      const wantsNarration = /\\b(?:narra[cç][aã]o|narrad[oa])\\b/i.test(options);
       const command = instruction.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
         .toLowerCase().replace(/[.,!?]/g, " ").trim().replace(/\\s+/g, " ")
         .replace(/^(?:ion|i on|aion|ai on) /, "")
@@ -463,7 +468,7 @@ function loginPage(clientId) {
         && /\\b(?:video|short)\\b/.test(command)
         && /\\b(?:transito|seguranca viaria)\\b/.test(command)
         && !/\\b(?:nao|sem|cancele)\\b/.test(command);
-      return { command, videoRequest, trafficRequest, scriptParts };
+      return { command, videoRequest, trafficRequest, scriptParts, seconds, wantsNarration };
     }
 
     openConversation(current);
@@ -483,7 +488,7 @@ function loginPage(clientId) {
         record.text = reply;
         saveHistory();
       };
-      let { command, videoRequest, trafficRequest, scriptParts } = parseCommand(request);
+      let { command, videoRequest, trafficRequest, scriptParts, seconds, wantsNarration } = parseCommand(request);
       if (/^(?:(?:voce )?(?:ja )?pode (?:criar|gerar|fazer|produzir|comecar)|vai em frente)$/.test(command)) {
         const previous = current.slice(0, -2).reverse().find(entry => {
           if (entry.who !== "Você") return false;
@@ -494,7 +499,7 @@ function loginPage(clientId) {
           update("Qual vídeo você quer que eu crie?");
           return;
         }
-        ({ command, videoRequest, trafficRequest, scriptParts } = parseCommand(previous.text));
+        ({ command, videoRequest, trafficRequest, scriptParts, seconds, wantsNarration } = parseCommand(previous.text));
       }
       if (/^(abra|abrir|acesse|acessar) (a )?(central 6d|adl midia)$/.test(command) && central) {
         update("Abrindo a Central 6D.");
@@ -545,6 +550,10 @@ function loginPage(clientId) {
         }
         return;
       }
+      if (seconds > 60) {
+        update("Escolha uma duração de até 60 segundos para este vídeo.");
+        return;
+      }
       const script = scriptParts.join(":").trim();
       let scenes = script.match(/[^.!?\\n]+[.!?]*/g)?.map(line => line.trim()).filter(Boolean) ?? [];
       if ((scriptParts.length && !scenes.length) || scenes.length > 6 || scenes.some(line => line.length > 100)) {
@@ -578,9 +587,9 @@ function loginPage(clientId) {
         try {
           result = await renderSample(scenes, progress => {
             body.textContent = "Gerando vídeo… " + progress + "%";
-          }, photo, recording.signal);
+          }, photo, recording.signal, seconds);
         } finally { photo?.close(); }
-        const { blob, extension, sceneCount } = result;
+        const { blob, extension, sceneCount, durationSeconds } = result;
         attachment = null;
         attachmentStatus.textContent = "";
         remove.hidden = true;
@@ -596,7 +605,7 @@ function loginPage(clientId) {
         download.textContent = "Baixar vídeo";
         update(title
           + " · " + sceneCount + (sceneCount === 1 ? " cena, " : " cenas, ")
-          + (sceneCount * 3) + " segundos, sem áudio." + " Baixe o arquivo antes de sair da conversa.");
+          + durationSeconds + " segundos, sem áudio." + (wantsNarration ? " A narração personalizada ainda está indisponível." : "") + " Baixe o arquivo antes de sair da conversa.");
         item.append(preview, download);
         log.scrollTop = log.scrollHeight;
       } catch (error) {
@@ -609,7 +618,7 @@ function loginPage(clientId) {
     };
   }
 
-  async function renderSample(customScenes, onProgress, photo, signal) {
+  async function renderSample(customScenes, onProgress, photo, signal, seconds) {
     const canvas = document.createElement("canvas");
     canvas.width = 540;
     canvas.height = 960;
@@ -643,6 +652,7 @@ function loginPage(clientId) {
       ["Dê mais um passo."],
       ["Recomeçar é coragem.", "Perdoar é liberdade."],
     ];
+    const durationSeconds = seconds || scenes.length * 3;
     signal.throwIfAborted();
     const stream = canvas.captureStream(15);
     let timer;
@@ -656,12 +666,12 @@ function loginPage(clientId) {
       await new Promise((resolve, reject) => {
         recorder.onstop = resolve;
         recorder.onerror = () => reject(new Error("Falha na gravação."));
-        const duration = scenes.length * 3000;
+        const duration = durationSeconds * 1000;
         const start = performance.now();
         let lastProgress = -1;
         function draw() {
           const elapsed = Math.min(performance.now() - start, duration);
-          const index = Math.min(scenes.length - 1, Math.floor(elapsed / 3000));
+          const index = Math.min(scenes.length - 1, Math.floor(elapsed * scenes.length / duration));
           const gradient = ctx.createLinearGradient(0, 0, 540, 960);
           gradient.addColorStop(0, ["#142b50", "#3a244e", "#193b44"][index % 3]);
           gradient.addColorStop(1, "#0b1429");
@@ -707,7 +717,7 @@ function loginPage(clientId) {
       const type = recorder.mimeType.split(";")[0] || mime.split(";")[0];
       const blob = new Blob(chunks, { type });
       if (blob.size < 1000) throw new Error("O arquivo saiu vazio.");
-      return { blob, sceneCount: scenes.length, extension: type === "video/mp4" ? "mp4" : "webm" };
+      return { blob, sceneCount: scenes.length, durationSeconds, extension: type === "video/mp4" ? "mp4" : "webm" };
     } finally {
       clearInterval(timer);
       clearTimeout(deadline);
