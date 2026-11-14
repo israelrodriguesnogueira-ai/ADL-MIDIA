@@ -4,6 +4,7 @@ import { protectOwnerRoute } from "../integracoes/ion-controle-dono.mjs";
 export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
+    if (path === "/api/conversa") return responderConversa(request, env);
     const bento = path === "/api/video/bento";
     if (bento || path === "/api/video/transito") {
       const workflow = bento ? "ion-animacao-bento.yml" : "ion-video-gratuito.yml";
@@ -90,6 +91,50 @@ export default {
     return verifyOwner(request);
   },
 };
+
+async function responderConversa(request, env) {
+  if (request.method !== "POST") return new Response(null, { status: 405, headers: { Allow: "POST" } });
+  const ownerEmail = env.ION_OWNER_EMAIL?.trim().toLowerCase();
+  const audience = env.ION_GOOGLE_CLIENT_ID?.trim();
+  if (!ownerEmail?.endsWith("@gmail.com") || !/^[a-z0-9-]+\.apps\.googleusercontent\.com$/.test(audience ?? "")) {
+    return Response.json({ erro: "Autenticação não configurada." }, { status: 503 });
+  }
+  return protectOwnerRoute({
+    owner: { issuer: GOOGLE_ISSUER, subject: ownerEmail },
+    verifySession: () => verifyGoogleIdentity(request, audience),
+    audit: ({ actor, ...event }) => console.warn(JSON.stringify(event)),
+    action: "conversar_com_ion",
+    resource: "ion",
+  }, async () => {
+    if (!env.ION_NUCLEO) return Response.json({ erro: "Modelo de conversa ainda não conectado." }, { status: 503 });
+    const body = await request.text();
+    if (body.length > 24000) return Response.json({ erro: "Mensagem muito longa." }, { status: 413 });
+    let mensagens;
+    try { ({ mensagens } = JSON.parse(body)); } catch {
+      return Response.json({ erro: "Solicitação inválida." }, { status: 400 });
+    }
+    if (!Array.isArray(mensagens) || !mensagens.length || mensagens.length > 9
+        || mensagens.some(m => !m || !["user", "assistant"].includes(m.role)
+          || typeof m.content !== "string" || !m.content.trim() || m.content.length > 2000)
+        || mensagens.at(-1).role !== "user") {
+      return Response.json({ erro: "Histórico de conversa inválido." }, { status: 400 });
+    }
+    try {
+      const resposta = await env.ION_NUCLEO.fetch("https://ion-nucleo/conversa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mensagens }),
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!resposta.ok) throw new Error();
+      const { texto } = await resposta.json();
+      if (typeof texto !== "string" || !texto.trim() || texto.length > 12000) throw new Error();
+      return Response.json({ texto }, { headers: { "Cache-Control": "no-store" } });
+    } catch {
+      return Response.json({ erro: "O núcleo de conversa está temporariamente indisponível." }, { status: 502 });
+    }
+  })(request);
+}
 
 const GOOGLE_ISSUER = "https://accounts.google.com";
 const GOOGLE_KEYS_URL = "https://www.googleapis.com/oauth2/v3/certs";
@@ -585,7 +630,32 @@ function loginPage(clientId) {
           update(simularCarteira(request, simulacaoAnterior ? pedidoAnterior.text : ""));
           return;
         }
-        update("Entendi que o pedido é de " + areas[operador] + ". O executor desse pedido ainda não está conectado ao chat.");
+        if (attachment) {
+          update("A análise da foto ainda não está conectada ao ION.");
+          return;
+        }
+        const mensagens = current.slice(0, -1).filter(entry =>
+          ["Você", "Ion"].includes(entry.who) && entry.text.trim()).slice(-9).map(entry => ({
+          role: entry.who === "Você" ? "user" : "assistant",
+          content: entry.text.slice(0, 2000),
+        }));
+        send.disabled = microphone.disabled = true;
+        try {
+          const response = await fetch("/api/conversa", {
+            method: "POST",
+            headers: { Authorization: "Bearer " + credential, "Content-Type": "application/json" },
+            body: JSON.stringify({ mensagens }),
+          });
+          const payload = await response.json();
+          update(response.ok ? payload.texto
+            : response.status === 503
+              ? "Área identificada: " + areas[operador] + ". " + payload.erro
+              : payload.erro);
+        } catch {
+          update("Falha de conexão com o núcleo de conversa.");
+        } finally {
+          send.disabled = microphone.disabled = false;
+        }
         return;
       }
       if (trafficRequest || bentoRequest) {
