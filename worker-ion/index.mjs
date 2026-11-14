@@ -713,7 +713,16 @@ function loginPage(clientId) {
           log.scrollTop = log.scrollHeight;
           return;
         }
-        update("Para desenhar o sincronismo do veículo informado, preciso da figura correspondente do manual de oficina. Envie a página e, se o código do motor não estiver nela, informe-o também. A figura precisa corresponder ao motor para indicar o trajeto e as marcas.");
+        const consulta = new URL("https://www.google.com/search");
+        consulta.searchParams.set("q", "site:ravenferramentas.com.br " + request + " manual sincronismo");
+        const pesquisa = document.createElement("a");
+        pesquisa.href = consulta.href;
+        pesquisa.target = "_blank";
+        pesquisa.rel = "noopener noreferrer";
+        pesquisa.textContent = "Buscar no catálogo técnico da Raven";
+        update("Ainda não tenho uma referência técnica confirmada para esse pedido. Use a busca abaixo, que já inclui os dados que você enviou.");
+        item.append(pesquisa);
+        log.scrollTop = log.scrollHeight;
         return;
       }
 
