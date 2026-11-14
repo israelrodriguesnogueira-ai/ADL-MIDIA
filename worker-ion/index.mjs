@@ -1,3 +1,4 @@
+import { caminhosSincronismo, localizarSincronismo } from "./catalogo-sincronismo.mjs";
 import { protectOwnerRoute } from "../integracoes/ion-controle-dono.mjs";
 
 export default {
@@ -466,6 +467,8 @@ function loginPage(clientId) {
 </main>
 <script src="https://accounts.google.com/gsi/client" defer></script>
 <script>
+  const caminhosSincronismo = ${JSON.stringify(caminhosSincronismo)};
+  ${localizarSincronismo.toString()}
   const status = document.getElementById("status");
   document.getElementById("sair").addEventListener("click", () => window.location.reload());
 
@@ -722,15 +725,24 @@ function loginPage(clientId) {
           log.scrollTop = log.scrollHeight;
           return;
         }
-        const consulta = new URL("https://www.google.com/search");
-        consulta.searchParams.set("q", "site:ravenferramentas.com.br " + request + " manual sincronismo");
-        const pesquisa = document.createElement("a");
-        pesquisa.href = consulta.href;
-        pesquisa.target = "_blank";
-        pesquisa.rel = "noopener noreferrer";
-        pesquisa.textContent = "Buscar no catálogo técnico da Raven";
-        update("Ainda não tenho uma referência técnica confirmada para esse pedido. Use a busca abaixo, que já inclui os dados que você enviou.");
-        item.append(pesquisa);
+        const resultados = localizarSincronismo(request, caminhosSincronismo);
+        if (resultados.length === 1) {
+          const { marca, modelo, motor, caminho } = resultados[0];
+          update("Aplicação encontrada no índice público da Oficina Conectada. " + marca + " " + modelo
+            + " · " + motor + ". A página identifica a aplicação. O desenho e as marcas de montagem ainda precisam ser conferidos no documento.");
+          const pagina = document.createElement("a");
+          pagina.href = "https://oficinaconectada.com.br/v/" + caminho.split("/").map(encodeURIComponent).join("/")
+            + "/Correias-Correntes-Procedimento-de-troca/Sincronismo-do-motor-correia-ou-corrente/";
+          pagina.target = "_blank";
+          pagina.rel = "noopener noreferrer";
+          pagina.textContent = "Abrir página de sincronismo no catálogo";
+          item.append(pagina);
+        } else if (resultados.length > 1) {
+          update("O catálogo encontrou mais de uma aplicação. Informe a variante do motor: "
+            + [...new Set(resultados.map(({ motor }) => motor))].slice(0, 8).join(", ") + ".");
+        } else {
+          update("Não encontrei uma aplicação correspondente no catálogo indexado. Para consultar, informe o modelo e o ano com a cilindrada ou o código do motor.");
+        }
         log.scrollTop = log.scrollHeight;
         return;
       }
