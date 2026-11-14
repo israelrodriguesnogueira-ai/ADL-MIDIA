@@ -421,10 +421,12 @@ function loginPage(clientId) {
   #cancelar-video { background: #8b3030; color: white; }
   button[hidden] { display: none; }
   .ion-resposta-acoes:not([hidden]) { display: flex; gap: .25rem; flex-wrap: wrap; align-items: center; margin-top: .4rem; }
-  .ion-resposta-acoes button, .ion-resposta-acoes summary { min-height: 44px; border-radius: .6rem; border: 1px solid #3b4b66; background: #19253a; color: #f3f6fc; padding: 0 .55rem; }
-  .ion-resposta-acoes summary { display: flex; align-items: center; cursor: pointer; }
-  .ion-resposta-acoes [aria-pressed="true"] { border-color: #a8d1ff; background: #243a55; }
+  .ion-resposta-acoes button, .ion-resposta-acoes summary { min-height: 44px; min-width: 40px; border-radius: .5rem; border: 0; background: transparent; color: #bac8da; padding: 0 .35rem; justify-content: center; cursor: pointer; }
+  .ion-resposta-acoes summary { display: flex; list-style: none; }
+  .ion-resposta-acoes summary::-webkit-details-marker { display: none; }
+  .ion-resposta-acoes button:hover, .ion-resposta-acoes [aria-pressed="true"] { background: #243a55; color: #f3f6fc; }
   .ion-resposta-acoes details[open] button { display: flex; margin-top: .25rem; }
+  .ion-resposta-votos { display: inline-flex; }
 </style>
 <main>
   <section id="entrada">
@@ -711,6 +713,11 @@ function loginPage(clientId) {
             help.textContent = "Selecione o texto para copiar manualmente.";
           }
         }));
+        const grupoVotos = document.createElement("div");
+        grupoVotos.className = "ion-resposta-votos";
+        grupoVotos.setAttribute("role", "group");
+        grupoVotos.setAttribute("aria-label", "Avaliar resposta");
+        acoes.append(grupoVotos);
         const votos = [["👍", "Gostei", "positivo"], ["👎", "Não gostei", "negativo"]];
         const atualizarVotos = () => {
           for (const [controle, valor] of controles) {
@@ -723,7 +730,7 @@ function loginPage(clientId) {
             atualizarVotos();
             saveHistory();
           });
-          acoes.append(controle);
+          grupoVotos.append(controle);
           return [controle, valor];
         });
         atualizarVotos();
