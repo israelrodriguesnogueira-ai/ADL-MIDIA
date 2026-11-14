@@ -3,6 +3,50 @@ import { protectOwnerRoute } from "../integracoes/ion-controle-dono.mjs";
 export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
+    if (path === "/api/video/transito") {
+      if (request.method !== "POST") return new Response("Método indisponível.", { status: 405, headers: { Allow: "POST" } });
+      const ownerEmail = env.ION_OWNER_EMAIL?.trim().toLowerCase();
+      const audience = env.ION_GOOGLE_CLIENT_ID?.trim();
+      if (!ownerEmail?.endsWith("@gmail.com") || !/^[a-z0-9-]+\.apps\.googleusercontent\.com$/.test(audience ?? "")) {
+        return Response.json({ erro: "Autenticação não configurada." }, { status: 503 });
+      }
+      const ownerRoute = protectOwnerRoute({
+        owner: { issuer: GOOGLE_ISSUER, subject: ownerEmail },
+        verifySession: () => verifyGoogleIdentity(request, audience),
+        audit: ({ actor, ...event }) => console.warn(JSON.stringify(event)),
+        action: "solicitar_video_transito",
+        resource: "ion",
+      }, async () => {
+        const token = env.ION_GITHUB_ACTIONS_TOKEN;
+        if (!token) return Response.json({ erro: "Integração de vídeo não configurada." }, { status: 503 });
+        let result;
+        try {
+          result = await fetch("https://api.github.com/repos/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/ion-video-gratuito.yml/dispatches", {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer " + token,
+              Accept: "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "User-Agent": "ION-Owner-Worker",
+            },
+            body: JSON.stringify({ ref: "main" }),
+            signal: AbortSignal.timeout(10000),
+          });
+        } catch {
+          return Response.json({ erro: "Não foi possível acionar o gerador." }, { status: 502 });
+        }
+        if (result.status !== 204) {
+          console.warn(JSON.stringify({ event: "ion.video_dispatch_failed", status: result.status }));
+          return Response.json({ erro: "O GitHub não aceitou a solicitação.", codigo: result.status }, { status: 502 });
+        }
+        return Response.json({
+          status: "solicitado",
+          detalhe: "Workflow acionado. O MP4 ainda precisa ser gerado e validado.",
+          acompanhamento: "https://github.com/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/ion-video-gratuito.yml",
+        }, { status: 202 });
+      });
+      return ownerRoute(request);
+    }
     if (path !== "/" && path !== "/verificar-acesso" && path !== "/painel") {
       return new Response("Rota indisponível.", { status: 404 });
     }
@@ -238,7 +282,7 @@ function loginPage(clientId) {
   const status = document.getElementById("status");
   document.getElementById("sair").addEventListener("click", () => window.location.reload());
 
-  function connectCommands(areas) {
+  function connectCommands(areas, credential) {
     const central = areas.find(area => area.nome === "Central 6D" && area.url);
     const input = document.getElementById("pedido-ion");
     const send = document.getElementById("enviar-ion");
@@ -463,6 +507,36 @@ function loginPage(clientId) {
         update("Posso criar um vídeo de teste ou montar um vídeo com suas frases. Exemplo: Crie um vídeo para mim: O primeiro passo é difícil. Tente mais uma vez.");
         return;
       }
+      if (trafficRequest) {
+        send.disabled = trafficButton.disabled = microphone.disabled = true;
+        update("Solicitando a geração do vídeo narrado no servidor…");
+        try {
+          const response = await fetch("/api/video/transito", {
+            method: "POST",
+            headers: { Authorization: "Bearer " + credential },
+            cache: "no-store",
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (response.ok && payload.status === "solicitado") {
+            update("Geração solicitada ao GitHub Actions. O vídeo ainda não está pronto; acompanhe a execução no link abaixo.");
+            const link = document.createElement("a");
+            link.href = payload.acompanhamento;
+            link.textContent = "Acompanhar geração e baixar MP4";
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            item.append(link);
+          } else {
+            update(response.status === 401
+              ? "Sua sessão expirou. Entre novamente para autorizar a execução."
+              : "Não foi possível iniciar a geração: " + (payload.erro || "erro HTTP " + response.status) + ". Nenhum vídeo foi produzido.");
+          }
+        } catch {
+          update("Falha de conexão com o gerador. Nenhum vídeo foi produzido.");
+        } finally {
+          send.disabled = trafficButton.disabled = microphone.disabled = false;
+        }
+        return;
+      }
       const script = scriptParts.join(":").trim();
       let scenes = script.match(/[^.!?\\n]+[.!?]*/g)?.map(line => line.trim()).filter(Boolean) ?? [];
       if ((scriptParts.length && !scenes.length) || scenes.length > 6 || scenes.some(line => line.length > 100)) {
@@ -635,8 +709,8 @@ function loginPage(clientId) {
     }
   }
 
-  function showPanel(areas) {
-    connectCommands(areas);
+  function showPanel(areas, credential) {
+    connectCommands(areas, credential);
     const list = document.getElementById("areas");
     list.replaceChildren();
     for (const area of areas) {
@@ -673,7 +747,7 @@ function loginPage(clientId) {
             cache: "no-store",
           });
           if (result.ok) {
-            showPanel((await result.json()).areas);
+            showPanel((await result.json()).areas, credential);
             return;
           }
           status.textContent = result.status === 401 ? "Sessão Google inválida ou expirada (401). Tente entrar novamente."
