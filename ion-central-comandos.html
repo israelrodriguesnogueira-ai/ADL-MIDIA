@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ION | Central de comandos</title>
+<style>body{margin:0;background:#101827;color:#edf3ff;font:16px system-ui}main{max-width:780px;margin:auto;padding:24px}h1{font-size:28px}section{background:#1b2940;padding:20px;border-radius:16px;margin:18px 0}textarea{box-sizing:border-box;width:100%;min-height:100px;background:#0e192b;color:white;border:1px solid #52637c;border-radius:10px;padding:12px;font:inherit}button,a.action{display:inline-block;background:#45b9a3;color:#071923;border:0;border-radius:9px;padding:12px 16px;font-weight:700;margin-top:12px;text-decoration:none;cursor:pointer}a{color:#8fe9db}pre{white-space:pre-wrap;overflow-wrap:anywhere}small{color:#bac8dd}</style></head>
+<body><main><h1>ION — Central de comandos</h1><p>Interface experimental gratuita. Executa comandos locais de orientação e abre a produção de vídeo no GitHub; ainda não é um agente autônomo nem envia tarefas sozinho.</p>
+<section><label for="pedido">Seu comando</label><textarea id="pedido" placeholder="Ex.: criar vídeo educativo de trânsito de 15 segundos"></textarea><button id="executar">Interpretar comando</button><pre id="resultado" aria-live="polite"></pre><div id="acoes"></div></section>
+<section><h2>Operação disponível</h2><p>Vídeo educativo vertical de trânsito, 15 segundos, com voz sintética e legendas.</p><a href="https://github.com/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/ion-video-gratuito.yml" target="_blank" rel="noopener">Abrir produção e resultados</a><p><small>No GitHub, escolha Run workflow para gerar sob demanda; após a conclusão, abra o artefato do vídeo. Não há execução automática disparada por esta página.</small></p></section>
+<section><h2>Limites desta versão</h2><p>Sem acesso a microfone, modelo de IA ou execução remota nesta página. Nenhuma chave ou token é solicitado. O processamento ocorre somente pelo workflow do repositório.</p></section>
+</main><script>
+const workflow='https://github.com/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/ion-video-gratuito.yml';
+document.getElementById('executar').addEventListener('click',()=>{
+const q=document.getElementById('pedido').value.toLocaleLowerCase('pt-BR');
+const r=document.getElementById('resultado'),a=document.getElementById('acoes');a.replaceChildren();
+if(/vídeo|video|trânsito|transito/.test(q)){r.textContent='Comando reconhecido: produção de vídeo de trânsito de 15 segundos. O gerador está no GitHub; esta interface não dispara o workflow automaticamente.';const link=document.createElement('a');link.href=workflow;link.className='action';link.target='_blank';link.rel='noopener';link.textContent='Abrir gerador de vídeo';a.append(link)}
+else if(/status|situação|situacao|andamento/.test(q)){r.textContent='Estado: interface de comandos experimental; gerador de vídeo disponível no GitHub; voz neural e automação completa pendentes.'}
+else if(!q.trim()){r.textContent='Digite um comando para continuar.'}
+else{r.textContent='Este comando ainda não possui executor. Nenhuma tarefa foi realizada.'}
+});</script></body></html>
