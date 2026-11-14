@@ -452,6 +452,46 @@ function loginPage(clientId) {
 
     ${identificarOperador.toString()}
 
+    function simularCarteira(texto, anterior) {
+      const normalizar = valor => valor.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase();
+      const pedido = normalizar(texto);
+      const contexto = normalizar(anterior || "");
+      const valorDo = valor => {
+        const valorEmMil = /(?:r\\$\\s*)?(?:(\\d+(?:,\\d+)?)\\s+)?mil\\s+reais\\b/.exec(valor);
+        if (valorEmMil) return Number((valorEmMil[1] || "1").replace(",", ".")) * 1000;
+        const encontrado = /r\\$\\s*(\\d[\\d.,]*)|(\\d[\\d.,]*)\\s+reais\\b/.exec(valor);
+        return encontrado ? Number((encontrado[1] || encontrado[2]).replaceAll(".", "").replace(",", ".")) : 0;
+      };
+      const prazosDe = valor => {
+        const numeros = { um: "1", dois: "2", tres: "3", quatro: "4", cinco: "5", seis: "6", sete: "7", oito: "8", nove: "9", dez: "10" };
+        valor = valor.replace(/\\b(um|dois|tres|quatro|cinco|seis|sete|oito|nove|dez)\\b/g, palavra => numeros[palavra]);
+        const anos = [];
+        for (const trecho of valor.matchAll(/\\b((?:\\d+\\s*(?:,\\s*|e\\s+))*\\d+)\\s*anos?\\b/g)) {
+          anos.push(...trecho[1].match(/\\d+/g).map(Number));
+        }
+        return [...new Set(anos)].sort((a, b) => a - b);
+      };
+      const valor = valorDo(pedido) || valorDo(contexto);
+      const prazos = prazosDe(pedido).length ? prazosDe(pedido) : prazosDe(contexto);
+      if (!valor || !prazos.length) {
+        return "Para simular a carteira, informe o valor inicial em reais e o prazo em anos. Se quiser, diga se aceita oscilações.";
+      }
+      const moeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+      const formatar = n => moeda.format(n);
+      const linhas = prazos.map(anos => {
+        const acoes = anos < 3 ? 0 : anos < 5 ? .1 : .25;
+        const cenarios = [.06, .09, .12].map(taxa => formatar(valor * (1 + taxa) ** anos));
+        return anos + (anos === 1 ? " ano" : " anos") + " — Selic: " + formatar(valor * (1 - acoes))
+          + " | ETF amplo de ações: " + formatar(valor * acoes)
+          + "\\nSaldo hipotético a 6%, 9% e 12% ao ano: " + cenarios.join(" / ");
+      });
+      return "Carteira simulada de " + formatar(valor)
+        + ". Usei uma composição conservadora como referência. Cada prazo compara o mesmo aporte inicial.\\n\\n"
+        + linhas.join("\\n\\n")
+        + "\\n\\nCenários brutos, sem novos aportes, impostos, taxas ou inflação. "
+        + "As taxas são hipóteses de cálculo. O ETF pode cair e o saldo pode ficar abaixo do valor inicial.";
+    }
+
     function parseCommand(request) {
       const quotedScript = /\\b(?:com\\s+(?:a\\s+)?frase|dizendo)\\s*:?\\s*(?:"([^"]+)"|“([^”]+)”|«([^»]+)»)/i.exec(request);
       const [instruction, ...scriptParts] = (quotedScript ? request.slice(0, quotedScript.index) : request).split(":");
@@ -527,6 +567,17 @@ function loginPage(clientId) {
           geral: "conversa geral",
         };
         const { operador } = identificarOperador(request);
+        const perguntaAnterior = current.slice(0, -2).at(-1);
+        const pedidoAnterior = current.slice(0, -2).at(-2);
+        const pedidoNormalizado = request.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase();
+        const simulacaoAnterior = perguntaAnterior?.who === "Ion"
+          && /^(?:Para simular a carteira|Carteira simulada de)/.test(perguntaAnterior.text)
+          && pedidoAnterior?.who === "Você";
+        if ((operador === "financeiro" && /\\bcarteira\\b/.test(pedidoNormalizado))
+            || (simulacaoAnterior && operador === "geral" && /\\b(?:reais|anos?)\\b|r\\$/.test(pedidoNormalizado))) {
+          update(simularCarteira(request, simulacaoAnterior ? pedidoAnterior.text : ""));
+          return;
+        }
         update("Entendi que o pedido é de " + areas[operador] + ". O executor desse pedido ainda não está conectado ao chat.");
         return;
       }
