@@ -1,10 +1,16 @@
 name: ION - teste gratuito de exportação MP4
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - scripts/ion-video-gratuito.py
+      - .github/workflows/ion-video-gratuito.yml
 permissions:
   contents: read
 jobs:
   video-gratuito:
+    if: github.repository == 'israelrodriguesnogueira-ai/ADL-MIDIA'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
