@@ -1,0 +1,24 @@
+name: ION - teste gratuito de exportação MP4
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  video-gratuito:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verificar FFmpeg
+        run: ffmpeg -version && ffprobe -version
+      - name: Gerar MP4 vertical sem API paga
+        run: python3 scripts/ion-video-gratuito.py
+      - name: Validar duração, resolução e fluxos
+        run: |
+          ffprobe -v error -show_entries format=duration -show_entries stream=codec_type,width,height -of json saida/ion-transito-15s.mp4
+      - name: Disponibilizar arquivo
+        uses: actions/upload-artifact@v4
+        with:
+          name: ion-video-gratuito-15s
+          path: saida/ion-transito-15s.mp4
+          retention-days: 7
