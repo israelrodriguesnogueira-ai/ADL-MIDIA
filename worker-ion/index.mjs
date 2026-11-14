@@ -116,11 +116,22 @@ async function analisarFoto(request, env) {
       return json({ erro: "Não consegui receber a foto em JPEG." }, 400);
     }
     try {
-      const resposta = await env.ION_AI.run("@cf/meta/llama-3.2-11b-vision-instruct", {
+      const modelo = "@cf/meta/llama-3.2-11b-vision-instruct";
+      const dados = {
         image: Array.from(image),
         prompt: "Responda em português brasileiro sobre esta foto. Descreva apenas o que consegue observar e informe incertezas. Pergunta: " + decodeURIComponent(pergunta),
         max_tokens: 350,
-      });
+      };
+      let resposta;
+      try {
+        resposta = await env.ION_AI.run(modelo, dados);
+      } catch (erro) {
+        // O proprietário autorizou a licença. Envie o aceite apenas se o provedor o exigir.
+        if (!/(?:license|terms|acceptable use)/i.test(String(erro?.message))
+            || !/(?:agree|accept)/i.test(String(erro?.message))) throw erro;
+        await env.ION_AI.run(modelo, { prompt: "agree" });
+        resposta = await env.ION_AI.run(modelo, dados);
+      }
       if (typeof resposta?.response !== "string" || !resposta.response.trim()) throw Error();
       return json({ texto: resposta.response });
     } catch {
