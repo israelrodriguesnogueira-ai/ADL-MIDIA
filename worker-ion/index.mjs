@@ -704,13 +704,18 @@ function loginPage(clientId) {
           && pallas([command, historicoTecnico.at(-1) || ""]));
         if (pedidoDoC4 && /\\b2010\\b/.test(command + " " + (historicoTecnico.at(-1) || ""))
             && !/\\b(?:19|20)(?!10)\\d{2}\\b/.test(command)) {
-          update("Referência de catálogo para o Citroën C4 Pallas 2.0 16V Flex 2010, motor EW10A. A página identifica a aplicação. A figura técnica precisa ser verificada antes de indicar as marcas de montagem.");
+          update("Referência de catálogo para o Citroën C4 Pallas 2.0 16V Flex 2010, motor EW10A. A página de catálogo identifica a aplicação. O manual técnico do C4 RFJ, edição de 2005, mostra os comandos e a posição do pino do virabrequim. Na figura B1BP2V3D, A é câmbio manual e B é automático. Esta referência é da família RFJ; a edição brasileira específica de 2010 ainda não foi confirmada.");
           const referencia = document.createElement("a");
           referencia.href = "https://oficinaconectada.com.br/v/Citroen/C4-Pallas/20-16V-L4-EW10A-Flex/2010/Correias-Correntes-Procedimento-de-troca/Sincronismo-do-motor-correia-ou-corrente/";
           referencia.target = "_blank";
           referencia.rel = "noopener noreferrer";
           referencia.textContent = "Ver aplicação no catálogo — C4 Pallas 2.0 Flex 2010";
-          item.append(referencia);
+          const manual = document.createElement("a");
+          manual.href = "https://pcgroup.rs/wp-content/uploads/2018/02/CITROEN-C4-2005.God_..pdf#page=209";
+          manual.target = "_blank";
+          manual.rel = "noopener noreferrer";
+          manual.textContent = "Abrir manual técnico do C4 RFJ — figuras de sincronismo";
+          item.append(referencia, document.createElement("br"), manual);
           log.scrollTop = log.scrollHeight;
           return;
         }
