@@ -863,6 +863,30 @@ function loginPage(clientId) {
         saveHistory();
       };
       let { command, videoRequest, trafficRequest, scriptParts } = parseCommand(request);
+      const aviso = /\\b(?:avise|comunique|informe)\\s+(?:(?:com|ao|a|o|para o)\\s+)?cliente\\s+([\\p{L}][\\p{L} .'-]{0,60}?)\\s+que\\s+(?:o\\s+)?carro(?:\\s+del[ea])?\\s+(.+)$/iu.exec(request);
+      if (aviso) {
+        const [, cliente, situacao] = aviso;
+        const texto = situacao.trim();
+        const horario = /[àa]s\\s+([01]?\\d|2[0-3])(?:(?::|h)([0-5]\\d)|\\s*h(?:oras?)?)?[.!]?$/i.exec(texto);
+        const pronto = /^(?:j[áa]\\s+)?est[áa]\\s+pronto[.!]?$/i.test(texto);
+        const agendado = /^(?:vai ficar|ficar[áa]|estar[áa]) pronto\\b/i.test(texto) && horario;
+        if (!pronto && !agendado) {
+          update("O carro já está pronto ou ficará pronto em um horário específico?");
+          return;
+        }
+        const mensagem = "Olá, " + cliente.trim() + "! " + (pronto
+          ? "Seu carro está pronto para retirada."
+          : "Seu carro estará pronto para retirada às " + horario[1] + "h" + (horario[2] || "") + ".");
+        update(mensagem + "\\n\\nRascunho. Escolha o contato no WhatsApp e confirme o envio lá.");
+        const abrir = document.createElement("a");
+        abrir.href = "https://wa.me/?text=" + encodeURIComponent(mensagem);
+        abrir.target = "_blank";
+        abrir.rel = "noopener noreferrer";
+        abrir.textContent = "Abrir rascunho no WhatsApp";
+        item.append(abrir);
+        log.scrollTop = log.scrollHeight;
+        return;
+      }
       const assuntoTecnico = /\\b(?:sincronismo|correia dentada|correia da entrada|corrente de distribuicao|ponto da correia|fasagem|marcas de montagem)\\b/;
       const pedidoAnterior = current.at(-4)?.who === "Você" ? current.at(-4).text : "";
       const comandoAnterior = parseCommand(pedidoAnterior).command;
