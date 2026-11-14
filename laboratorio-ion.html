@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ION — Laboratório de comandos</title>
+<style>body{font:16px system-ui;background:#0c1424;color:#eef3ff;margin:0}main{max-width:760px;margin:auto;padding:24px}section{background:#17243a;border:1px solid #34445d;border-radius:16px;padding:18px;margin:16px 0}textarea{width:100%;box-sizing:border-box;background:#0c1424;color:white;border:1px solid #60718a;border-radius:9px;padding:12px;min-height:100px;font:inherit}button{padding:12px;margin:8px 8px 0 0;background:#8bbdff;border:0;border-radius:9px;font:inherit;cursor:pointer}pre{white-space:pre-wrap;overflow-wrap:anywhere}small{color:#b5c4db}</style>
+<main><h1>ION · Laboratório de comandos</h1><p>Protótipo isolado: interpreta solicitações conhecidas e prepara planos. <strong>Não executa ferramentas externas nem produz vídeo.</strong> Nenhuma credencial é necessária.</p>
+<section><label for="pedido">Seu comando</label><textarea id="pedido" placeholder="Crie um vídeo educativo de trânsito de 15 segundos"></textarea><button id="analisar">Analisar comando</button><button id="falar">Ditado por voz</button><small id="voz"></small></section>
+<section><h2>Plano e estado</h2><pre id="resultado" aria-live="polite">Aguardando comando.</pre></section>
+</main><script>
+const pedido=document.getElementById('pedido'),resultado=document.getElementById('resultado'),voz=document.getElementById('voz');
+function interpretar(texto){const t=texto.toLocaleLowerCase('pt-BR');if(!t.trim())return {estado:'pendente',mensagem:'Informe um comando.'};
+if(/v[ií]deo|short|film/.test(t)){const s=t.match(/(\d+)\s*(segundos?|s\b)/);return {tipo:'produção de vídeo',duracaoSegundos:s?Number(s[1]):null,etapas:['Definir roteiro','Selecionar imagens com licença','Preparar narração e legendas','Renderizar MP4','Validar vídeo e áudio'],estado:'aguardando motor de execução',mensagem:'Plano gerado. Nenhum vídeo foi produzido.'};}
+if(/ibovespa|investimento|financeir/.test(t))return {tipo:'análise financeira',etapas:['Obter dados verificáveis','Registrar hipótese antes da avaliação','Comparar resultado posterior'],estado:'aguardando fontes de dados',mensagem:'Não houve negociação nem recomendação automática.'};
+return {tipo:'comando geral',estado:'ferramenta não conectada',mensagem:'Comando recebido, mas ainda não existe motor de IA conectado para executá-lo.'};}
+document.getElementById('analisar').onclick=()=>{resultado.textContent=JSON.stringify(interpretar(pedido.value),null,2)};
+document.getElementById('falar').onclick=()=>{const R=window.SpeechRecognition||window.webkitSpeechRecognition;if(!R){voz.textContent='Reconhecimento de voz não disponível neste navegador.';return}const r=new R();r.lang='pt-BR';r.onresult=e=>{pedido.value=e.results[0][0].transcript;resultado.textContent=JSON.stringify(interpretar(pedido.value),null,2)};r.onerror=e=>voz.textContent='Falha de voz: '+e.error;r.start()};
+</script></html>
