@@ -12,13 +12,13 @@ concurrency:
 jobs:
   logs:
     runs-on: ubuntu-24.04
-    timeout-minutes: 6
+    timeout-minutes: 3
     steps:
       - name: Capturar eventos de validação
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: dcedad52c4d58ad2458d1b6aa70fb716
-          CAPTURE_SECONDS: ${{ github.event_name == 'workflow_dispatch' && '180' || '18' }}
+          CAPTURE_SECONDS: '12'
         run: |
           set -euo pipefail
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
@@ -172,7 +172,7 @@ jobs:
           }
           JS
 
-          node "$RUNNER_TEMP/ion-tail.mjs" | python -u "$RUNNER_TEMP/ion-filter.py" | tee "$RUNNER_TEMP/ion-events"
+          timeout --signal=TERM --kill-after=5s 90s node "$RUNNER_TEMP/ion-tail.mjs" | python -u "$RUNNER_TEMP/ion-filter.py" | tee "$RUNNER_TEMP/ion-events"
           if ! grep -q '"event": "ion.access_check_started"' "$RUNNER_TEMP/ion-events"; then
             echo "::error::Nenhum evento de validação foi recebido durante a captura."
             exit 1
