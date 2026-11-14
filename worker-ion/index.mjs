@@ -117,9 +117,15 @@ async function analisarFoto(request, env) {
     }
     try {
       const modelo = "@cf/meta/llama-3.2-11b-vision-instruct";
+      let binario = "";
+      for (let inicio = 0; inicio < image.length; inicio += 8192) {
+        binario += String.fromCharCode(...image.subarray(inicio, inicio + 8192));
+      }
       const dados = {
-        image: Array.from(image),
-        prompt: "Responda em português brasileiro sobre esta foto. Descreva apenas o que consegue observar e informe incertezas. Pergunta: " + decodeURIComponent(pergunta),
+        messages: [{ role: "user", content: [
+          { type: "text", text: "Responda em português brasileiro. Identifique o que é visível na imagem e diga quando houver dúvida. Pergunta: " + decodeURIComponent(pergunta) },
+          { type: "image_url", image_url: { url: "data:image/jpeg;base64," + btoa(binario) } },
+        ] }],
         max_tokens: 350,
       };
       let resposta;
@@ -127,14 +133,15 @@ async function analisarFoto(request, env) {
         resposta = await env.ION_AI.run(modelo, dados);
       } catch (erro) {
         // O proprietário autorizou a licença. Envie o aceite apenas se o provedor o exigir.
-        if (!/(?:license|terms|acceptable use)/i.test(String(erro?.message))
-            || !/(?:agree|accept)/i.test(String(erro?.message))) throw erro;
+        if (!/(?:\bagree\b|(?:license|terms|acceptable use).*(?:accept|required))/i.test(String(erro?.message))) throw erro;
         await env.ION_AI.run(modelo, { prompt: "agree" });
         resposta = await env.ION_AI.run(modelo, dados);
       }
-      if (typeof resposta?.response !== "string" || !resposta.response.trim()) throw Error();
-      return json({ texto: resposta.response });
-    } catch {
+      const texto = resposta?.response ?? resposta?.choices?.[0]?.message?.content;
+      if (typeof texto !== "string" || !texto.trim()) throw new Error("empty_response");
+      return json({ texto });
+    } catch (erro) {
+      console.warn(JSON.stringify({ event: "ion.vision_failed", code: Number.isInteger(erro?.code) ? erro.code : undefined }));
       return json({ erro: "O modelo de visão não respondeu. Tente novamente." }, 502);
     }
   })(request);
