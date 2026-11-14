@@ -691,7 +691,7 @@ function loginPage(clientId) {
         ouvir.title = "Ouvir resposta";
         ouvir.setAttribute("aria-label", "Ouvir resposta");
         ouvir.hidden = !content.trim() || content === "Entendendo seu pedido…";
-        ouvir.onclick = async () => {
+        const reproduzir = async (usarVozLocal = false) => {
           const jaLendo = leitura?.botao === ouvir;
           pararLeitura();
           if (jaLendo) return;
@@ -699,21 +699,33 @@ function loginPage(clientId) {
           if (!texto) return;
           const vozes = vozesBrasileiras();
           const preferida = vozes.find(v => v.voiceURI === vozSalva());
-          if (!preferida) {
+          if (!preferida && !usarVozLocal) {
             const sessao = { botao: ouvir };
             leitura = sessao;
             ouvir.textContent = "■";
             ouvir.setAttribute("aria-label", "Parar leitura");
             help.textContent = "Preparando voz Faber. Na primeira vez, o modelo precisa ser baixado.";
+            let prazo;
             try {
-              const piper = await import("https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.5/+esm");
-              if (leitura !== sessao) return;
-              const audioWav = await piper.predict({ text: texto, voiceId: "pt_BR-faber-medium" });
+              const preparar = async () => {
+                const piper = await import("https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.5/+esm");
+                if (leitura !== sessao) return null;
+                return piper.predict({ text: texto, voiceId: "pt_BR-faber-medium" }, progresso => {
+                  if (leitura === sessao && progresso.total > 0) {
+                    help.textContent = "Baixando voz Faber… " + Math.min(100, Math.round(progresso.loaded * 100 / progresso.total)) + "%";
+                  }
+                });
+              };
+              const audioWav = await Promise.race([preparar(), new Promise((_, reject) => {
+                prazo = setTimeout(() => reject(new Error("Tempo de preparação excedido")), 45000);
+              })]);
               if (leitura !== sessao) return;
               const audio = document.createElement("audio");
               sessao.url = URL.createObjectURL(audioWav);
               sessao.audio = audio;
+              audio.controls = true;
               audio.src = sessao.url;
+              item.append(audio);
               audio.onended = () => { if (leitura === sessao) pararLeitura(); };
               audio.onerror = () => {
                 if (leitura !== sessao) return;
@@ -725,14 +737,22 @@ function loginPage(clientId) {
                 await audio.play();
               } catch {
                 if (leitura !== sessao) return;
-                audio.controls = true;
-                item.append(audio);
                 help.textContent = "Toque no controle de áudio abaixo da resposta para ouvir.";
               }
             } catch {
               if (leitura !== sessao) return;
               pararLeitura();
-              help.textContent = "Não foi possível carregar a voz Faber. Tente novamente ou escolha uma voz do aparelho no menu do ION.";
+              help.textContent = "A voz Faber não ficou pronta. Você pode tentar novamente ou usar a voz do aparelho.";
+              if (leitor && window.SpeechSynthesisUtterance && !item.querySelector(".ion-voz-local")) {
+                const alternativa = document.createElement("button");
+                alternativa.type = "button";
+                alternativa.className = "ion-voz-local";
+                alternativa.textContent = "Ouvir com a voz do aparelho";
+                alternativa.onclick = () => reproduzir(true);
+                item.append(alternativa);
+              }
+            } finally {
+              clearTimeout(prazo);
             }
             return;
           }
@@ -742,7 +762,7 @@ function loginPage(clientId) {
           }
           const fala = new SpeechSynthesisUtterance(texto);
           fala.lang = "pt-BR";
-          fala.voice = preferida;
+          if (preferida) fala.voice = preferida;
           leitura = { fala, botao: ouvir };
           ouvir.textContent = "■";
           ouvir.setAttribute("aria-label", "Parar leitura");
@@ -759,6 +779,7 @@ function loginPage(clientId) {
           };
           leitor.speak(fala);
         };
+        ouvir.onclick = () => reproduzir();
       }
       let acoes;
       if (who === "Ion") {
