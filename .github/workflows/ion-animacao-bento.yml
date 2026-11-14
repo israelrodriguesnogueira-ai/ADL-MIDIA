@@ -1,0 +1,30 @@
+name: ION - animacao Bento e a bola
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  renderizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preparar renderizador
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg fonts-dejavu-core
+          python3 -m venv "$RUNNER_TEMP/ion-render"
+          "$RUNNER_TEMP/ion-render/bin/python" -m pip install Pillow==12.2.0
+      - name: Renderizar e verificar MP4
+        run: |
+          mkdir -p saida
+          "$RUNNER_TEMP/ion-render/bin/python" scripts/ion-animacao-bento.py
+          ffmpeg -v error -i saida/visual.mp4 -i saida/music.wav -c:v copy -c:a aac -b:a 96k -movflags +faststart saida/Bento_e_a_bola.mp4
+          test "$(ffprobe -v error -show_entries format=duration -of csv=p=0 saida/Bento_e_a_bola.mp4)" = 60.000000
+          ffmpeg -v error -xerror -i saida/Bento_e_a_bola.mp4 -map 0:v -map 0:a -f null -
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Bento_e_a_bola
+          path: saida/Bento_e_a_bola.mp4
+          if-no-files-found: error
+          retention-days: 7
