@@ -3,6 +3,12 @@
 ## Objetivo
 Traduzir para português brasileiro o conteúdo que o proprietário estiver ouvindo ou assistindo, com legendas e opção de fala sintetizada. Não declarar tradução simultânea operacional antes de teste real.
 
+## Modos aprovados pelo proprietário
+- **Automático com ativação explícita:** ao iniciar a sessão de escuta, detectar o idioma e traduzir o áudio autorizado continuamente até o comando de parar; exibir indicador de captura ativo.
+- **Sob comando de voz:** iniciar a tradução após pedido como “ION, traduza o que estou ouvindo”; permitir interromper por voz ou botão.
+- Ambos os modos oferecem legendas em pt-BR e opção de voz sintetizada, conforme capacidade do dispositivo.
+- A escuta contínua deve permanecer **desativada por padrão**. Não contornar restrições de captura de áudio de outros aplicativos.
+
 ## Etapas técnicas
 1. Captura consentida: microfone ou arquivo fornecido pelo proprietário. Captura do áudio de outros aplicativos depende de permissões e limitações do Android/iOS/navegador.
 2. Identificação do idioma e reconhecimento de fala, preferencialmente em processamento local quando viável.
