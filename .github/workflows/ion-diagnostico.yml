@@ -97,8 +97,7 @@ jobs:
               signal: AbortSignal.timeout(10000),
             });
           }
-          const verifyUrl = "https://api.cloudflare.com/client/v4/accounts/" +
-            process.env.CLOUDFLARE_ACCOUNT_ID + "/tokens/verify";
+          const verifyUrl = "https://api.cloudflare.com/client/v4/user/tokens/verify";
           const verification = await api(verifyUrl, "GET");
           const tokenInfo = await verification.json();
           if (!verification.ok || !tokenInfo.success || tokenInfo.result?.status !== "active") {
