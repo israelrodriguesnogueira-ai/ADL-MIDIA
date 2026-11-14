@@ -695,6 +695,17 @@ function loginPage(clientId) {
       let { command, videoRequest, trafficRequest, scriptParts } = parseCommand(request);
       if (/\\b(?:sincronismo|correia dentada|ponto da correia)\\b/.test(command)
           && /\\b(?:desenho|desenha|desenhe|esquema|diagrama|ilustracao)\\b/.test(command)) {
+        if (/\\bc4\\s+(?:pallas|palas|pala|palace)\\b/.test(command) && /\\b2\\s+0\\b/.test(command)) {
+          update("Você pediu o sincronismo do Citroën C4 Pallas 2.0. A Raven publica uma referência técnica para a variante EW10A/RFJ. Confirme o código do motor antes de aplicar as marcas da figura.");
+          const referencia = document.createElement("a");
+          referencia.href = "https://www.ravenferramentas.com.br/Uploads/Ravenews31.pdf";
+          referencia.target = "_blank";
+          referencia.rel = "noopener noreferrer";
+          referencia.textContent = "Abrir referência técnica Raven — EW10A/RFJ";
+          item.append(referencia);
+          log.scrollTop = log.scrollHeight;
+          return;
+        }
         update("Para desenhar o sincronismo do veículo informado, preciso da figura correspondente do manual de oficina. Envie a página e, se o código do motor não estiver nela, informe-o também. A figura precisa corresponder ao motor para indicar o trajeto e as marcas.");
         return;
       }
