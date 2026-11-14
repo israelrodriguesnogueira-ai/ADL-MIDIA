@@ -864,6 +864,7 @@ function loginPage(clientId) {
       };
       let { command, videoRequest, trafficRequest, scriptParts } = parseCommand(request);
       const aviso = /\\b(?:avise|comunique|informe)\\s+(?:(?:com|ao|a|o|para o)\\s+)?cliente\\s+([\\p{L}][\\p{L} .'-]{0,60}?)\\s+que\\s+(?:o\\s+)?carro(?:\\s+del[ea])?\\s+(.+)$/iu.exec(request);
+      let mensagem;
       if (aviso) {
         const [, cliente, situacao] = aviso;
         const texto = situacao.trim();
@@ -874,10 +875,19 @@ function loginPage(clientId) {
           update("O carro já está pronto ou ficará pronto em um horário específico?");
           return;
         }
-        const mensagem = "Olá, " + cliente.trim() + "! " + (pronto
+        mensagem = "Olá, " + cliente.trim() + "! " + (pronto
           ? "Seu carro está pronto para retirada."
           : "Seu carro estará pronto para retirada às " + horario[1] + "h" + (horario[2] || "") + ".");
-        update(mensagem + "\\n\\nRascunho. Escolha o contato no WhatsApp e confirme o envio lá.");
+      }
+      const marcadorWhatsApp = "\\n\\nRascunho. Escolha o contato no WhatsApp e confirme o envio lá.";
+      const anteriorWhatsApp = current.at(-3);
+      const telefoneInformado = request.match(/(?:^|\\s)(\\+55[\\s.-]*)?(\\(?[1-9]\\d\\)?)[\\s.-]*(9?\\d{4})[\\s.-]*(\\d{4})(?=$|[\\s.!?,;])/);
+      const rascunhoAnterior = anteriorWhatsApp?.who === "Ion" && anteriorWhatsApp.text.endsWith(marcadorWhatsApp);
+      if (!mensagem && telefoneInformado && rascunhoAnterior) {
+        mensagem = anteriorWhatsApp.text.slice(0, -marcadorWhatsApp.length);
+      }
+      if (mensagem) {
+        update(mensagem + marcadorWhatsApp);
         const abrir = document.createElement("a");
         abrir.href = "https://wa.me/?text=" + encodeURIComponent(mensagem);
         abrir.target = "_blank";
@@ -925,6 +935,10 @@ function loginPage(clientId) {
           item.append(escolher);
         }
         item.append(direto);
+        if (telefoneInformado) {
+          telefone.value = "+55 " + telefoneInformado.slice(2).join(" ");
+          atualizarDestino();
+        }
         log.scrollTop = log.scrollHeight;
         return;
       }
