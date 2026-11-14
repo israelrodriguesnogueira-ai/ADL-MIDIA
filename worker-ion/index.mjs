@@ -288,7 +288,6 @@ function loginPage(clientId) {
     const input = document.getElementById("pedido-ion");
     const send = document.getElementById("enviar-ion");
     const form = document.getElementById("comando-ion");
-    const trafficButton = { disabled: false };
     const log = document.getElementById("conversa-ion");
     const get = id => document.getElementById(id);
     const menu = get("ion-menu");
@@ -512,7 +511,7 @@ function loginPage(clientId) {
         return;
       }
       if (trafficRequest) {
-        send.disabled = trafficButton.disabled = microphone.disabled = true;
+        send.disabled = microphone.disabled = true;
         cancelVideo.hidden = false;
         recording = new AbortController();
         update("Solicitando a geração do vídeo narrado no servidor…");
@@ -542,7 +541,7 @@ function loginPage(clientId) {
         } finally {
           recording = undefined;
           cancelVideo.hidden = true;
-          send.disabled = trafficButton.disabled = microphone.disabled = false;
+          send.disabled = microphone.disabled = false;
         }
         return;
       }
@@ -569,7 +568,7 @@ function loginPage(clientId) {
           "Respeite a sinalização. Cuidar no trânsito protege vidas.",
         ];
       }
-      send.disabled = trafficButton.disabled = microphone.disabled = true;
+      send.disabled = microphone.disabled = true;
       recording = new AbortController();
       cancelVideo.hidden = false;
       body.textContent = "Gerando o vídeo experimental. Mantenha esta tela aberta.";
@@ -605,7 +604,7 @@ function loginPage(clientId) {
       } finally {
         recording = undefined;
         cancelVideo.hidden = true;
-        send.disabled = trafficButton.disabled = microphone.disabled = false;
+        send.disabled = microphone.disabled = false;
       }
     };
   }
