@@ -344,6 +344,7 @@ function loginPage(clientId) {
     } catch {}
     let current = saved[0] ?? [];
     let attachment = null;
+    let textAttachment = null;
     let recording;
     const cancelVideo = get("cancelar-video");
     cancelVideo.onclick = () => {
@@ -364,6 +365,7 @@ function loginPage(clientId) {
       microphone.setAttribute("aria-pressed", "false");
       current = chat;
       attachment = null;
+      textAttachment = null;
       attachmentStatus.textContent = "";
       remove.hidden = true;
       input.value = "";
@@ -409,28 +411,38 @@ function loginPage(clientId) {
         if (!file || send.disabled) return;
         attachments.hidden = true;
         attach.setAttribute("aria-expanded", "false");
+        help.textContent = "";
         if (file.type.startsWith("image/") && file.size <= 10_000_000) {
           attachment = file;
-          attachmentStatus.textContent = "Foto escolhida: " + file.name;
+          textAttachment = null;
+          attachmentStatus.textContent = "Foto anexada: " + file.name;
           remove.hidden = false;
           return;
         }
         if (/\\.txt$/i.test(file.name) && file.size <= 4_000) {
-          const script = (await file.text()).trim();
-          if (script.length && script.length <= 480) {
-            input.value = "Crie um vídeo: " + script;
+          try {
+            const text = (await file.text()).trim();
+            if (text && text.length <= 1500 && !send.disabled) {
+              attachment = null;
+              textAttachment = { name: file.name, text };
+              attachmentStatus.textContent = "Arquivo anexado: " + file.name;
+              remove.hidden = false;
+              return;
+            }
+          } catch {
+            help.textContent = "Não consegui abrir o arquivo.";
             return;
           }
         }
-        help.textContent = "Use uma foto de até 10 MB ou um arquivo TXT com até 480 caracteres.";
+        help.textContent = "Use uma foto de até 10 MB ou um TXT com até 1.500 caracteres.";
       };
     }
     const remove = document.createElement("button");
     remove.type = "button";
     remove.hidden = true;
-    remove.textContent = "Remover foto";
+    remove.textContent = "Remover anexo";
     attachmentStatus.after(remove);
-    remove.onclick = () => { attachment = null; attachmentStatus.textContent = ""; remove.hidden = true; };
+    remove.onclick = () => { attachment = null; textAttachment = null; attachmentStatus.textContent = ""; remove.hidden = true; };
 
     const microphone = get("voz-ion");
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -561,7 +573,11 @@ function loginPage(clientId) {
       const request = input.value.trim();
       if (!request || send.disabled) return;
       message("Você", request);
-      current.push({who: "Você", text: request});
+      const textoEnviado = textAttachment
+        ? request + "\\n\\nArquivo anexado (" + textAttachment.name.slice(0, 120) + "):\\n" + textAttachment.text
+        : request;
+      current.push({who: "Você", text: textoEnviado});
+      if (textAttachment) remove.click();
       saveHistory();
       input.value = "";
       const { item, body } = message("Ion", "Entendendo seu pedido…");
