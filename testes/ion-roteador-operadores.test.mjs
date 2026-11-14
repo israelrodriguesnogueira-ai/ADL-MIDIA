@@ -11,3 +11,4 @@ test("código vai para desenvolvimento",()=>assert.equal(identificarOperador("Co
 test("ciência vai para científico",()=>assert.equal(identificarOperador("Desenvolva uma hipótese científica").operador,"cientifico"));
 test("vídeo vai para mídia",()=>assert.equal(identificarOperador("Crie um vídeo educativo").operador,"midia"));
 test("não afirma executar o que não está conectado",()=>assert.equal(respostaSemExecutor(identificarOperador("Crie um vídeo")).status,"aguardando_executor"));
+test("imagem de carteira digital vai para mídia",()=>assert.equal(identificarOperador("criar foto para mim de uma carteira digital").operador,"midia"));
