@@ -1,0 +1,17 @@
+# Configuração da raiz para Cloudflare Workers Builds (preview do PR).
+# A configuração operacional permanece em worker-ion/wrangler.toml.
+name = "ion-validacao"
+main = "worker-ion/index.mjs"
+compatibility_date = "2026-11-10"
+workers_dev = true
+preview_urls = false
+keep_vars = true
+
+[previews]
+
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+invocation_logs = false
