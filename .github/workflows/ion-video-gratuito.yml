@@ -9,8 +9,16 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
-      - name: Verificar FFmpeg
-        run: ffmpeg -version && ffprobe -version
+      - name: Instalar FFmpeg gratuito
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+      - name: Verificar FFmpeg e FFprobe
+        run: |
+          command -v ffmpeg
+          command -v ffprobe
+          ffmpeg -version
+          ffprobe -version
       - name: Gerar MP4 vertical sem API paga
         run: python3 scripts/ion-video-gratuito.py
       - name: Validar duração, resolução e fluxos
