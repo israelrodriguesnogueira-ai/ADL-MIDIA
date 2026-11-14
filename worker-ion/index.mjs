@@ -305,6 +305,7 @@ function loginPage(clientId) {
     } catch {}
     let current = saved[0] ?? [];
     let attachment = null;
+    const ultimaFotoPorConversa = new WeakMap();
     let textFile = null;
     let recording;
     const cancelVideo = get("cancelar-video");
@@ -474,6 +475,7 @@ function loginPage(clientId) {
       event.preventDefault();
       const request = input.value.trim();
       const file = attachment || textFile;
+      if (attachment) ultimaFotoPorConversa.set(current, attachment);
       if ((!request && !file) || send.disabled) return;
       const { item: sent } = message("Você", request || file.name);
       if (file) {
@@ -533,6 +535,24 @@ function loginPage(clientId) {
         update(photo
           ? "Foto adicionada nesta sessão. Use Baixar foto para salvar. A análise da imagem ainda não está disponível."
           : "Arquivo adicionado nesta sessão. Use Baixar arquivo para salvar.");
+        return;
+      }
+      const fotoAnterior = ultimaFotoPorConversa.get(current);
+      if (!videoRequest && !trafficRequest && fotoAnterior
+          && /\\b(?:o que (?:e|tem|aparece)|qual (?:e|seria)|identifi\\w*|analis\\w*|descrev\\w*|descri\\w*|foto|imagem)\\b/.test(command)) {
+        if (/\\b(?:baix\\w*|salv\\w*|abr\\w*)\\b/.test(command)) {
+          const url = URL.createObjectURL(fotoAnterior);
+          videoUrls.push(url);
+          const download = document.createElement("a");
+          download.href = url;
+          download.download = fotoAnterior.name;
+          download.textContent = "Baixar foto";
+          item.append(download);
+          update("Aqui está a última foto enviada nesta conversa.");
+        } else {
+          update("Sua pergunta se refere à última foto enviada nesta conversa. A análise visual ainda não está disponível.");
+        }
+        log.scrollTop = log.scrollHeight;
         return;
       }
       if (!videoRequest && !trafficRequest) {
