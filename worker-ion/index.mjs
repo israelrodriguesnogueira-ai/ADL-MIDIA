@@ -740,7 +740,12 @@ function loginPage(clientId) {
         saveHistory();
       };
       let { command, videoRequest, trafficRequest, scriptParts } = parseCommand(request);
-      if (/\\b(?:sincronismo|correia dentada|correia da entrada|ponto da correia|fasagem|marcas de montagem)\\b/.test(command)
+      const assuntoTecnico = /\\b(?:sincronismo|correia dentada|correia da entrada|corrente de distribuicao|ponto da correia|fasagem|marcas de montagem)\\b/;
+      const pedidoAnterior = current.at(-4)?.who === "Você" ? current.at(-4).text : "";
+      const comandoAnterior = parseCommand(pedidoAnterior).command;
+      const pedeManual = /^(?:(?:manda|mande|envia|envie|mostra|mostre|abre|abra|quero|me manda|me mande)\\s+)?(?:o\\s+)?(?:manual|link|figura|desenho|esquema)(?:\\s+(?:tecnico|dele|desse motor|por favor))*$/.test(command);
+      const continuaTecnico = pedeManual && assuntoTecnico.test(comandoAnterior);
+      if ((assuntoTecnico.test(command) || continuaTecnico)
           && !videoRequest && !trafficRequest) {
         const modelo = /\\bc\\s*4\\s+(?:pallas|palas|pala|palace)\\b/;
         const motor = /\\b(?:2\\s+(?:0|zero)|dois\\s+(?:ponto\\s+)?zero|ew10a|rfj)\\b/;
@@ -748,7 +753,7 @@ function loginPage(clientId) {
         const outroAno = /\\b(?:19\\d{2}|20(?!10)\\d{2})\\b/;
         const anterior = current.slice(0, -2).filter(m => m.who === "Você").slice(-5)
           .map(m => parseCommand(m.text).command).reverse().find(t => modelo.test(t)) || "";
-        const complemento = modelo.test(command) || /\\b(?:desse|deste|dele|mesmo)\\b/.test(command) ? anterior : "";
+        const complemento = continuaTecnico || modelo.test(command) || /\\b(?:desse|deste|dele|mesmo)\\b/.test(command) ? anterior : "";
         const contextoCompativel = complemento && !outroMotor.test(complemento) && !outroAno.test(complemento);
         const aplicacaoC4 = (modelo.test(command) || contextoCompativel) && !outroAno.test(command)
           && !outroMotor.test(command) && (motor.test(command) || (contextoCompativel && motor.test(complemento)))
@@ -769,7 +774,7 @@ function loginPage(clientId) {
           log.scrollTop = log.scrollHeight;
           return;
         }
-        const resultados = localizarSincronismo(request, caminhosSincronismo);
+        const resultados = localizarSincronismo(continuaTecnico ? pedidoAnterior : request, caminhosSincronismo);
         if (resultados.length === 1) {
           const { marca, modelo, motor, caminho } = resultados[0];
           update("Aplicação encontrada no índice público da Oficina Conectada. " + marca + " " + modelo
