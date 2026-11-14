@@ -1,4 +1,4 @@
-import { caminhosSincronismo, localizarSincronismo } from "./catalogo-sincronismo.mjs";
+import { caminhosSincronismo, scriptSincronismo } from "./catalogo-sincronismo.mjs";
 import { protectOwnerRoute } from "../integracoes/ion-controle-dono.mjs";
 
 export default {
@@ -468,7 +468,7 @@ function loginPage(clientId) {
 <script src="https://accounts.google.com/gsi/client" defer></script>
 <script>
   const caminhosSincronismo = ${JSON.stringify(caminhosSincronismo)};
-  ${localizarSincronismo.toString()}
+  ${scriptSincronismo}
   const status = document.getElementById("status");
   document.getElementById("sair").addEventListener("click", () => window.location.reload());
 
@@ -741,7 +741,10 @@ function loginPage(clientId) {
           update("O catálogo encontrou mais de uma aplicação. Informe a variante do motor: "
             + [...new Set(resultados.map(({ motor }) => motor))].slice(0, 8).join(", ") + ".");
         } else {
-          update("Não encontrei uma aplicação correspondente no catálogo indexado. Para consultar, informe o modelo e o ano com a cilindrada ou o código do motor.");
+          const cht = /\\bc\\s*h\\s*t\\s*1[., ]0\\b/i.test(request);
+          update(cht
+            ? "Entendi motor CHT 1.0. Não encontrei uma referência confirmada no catálogo atual. Qual é o veículo e o ano?"
+            : "Não encontrei uma aplicação correspondente no catálogo indexado. Informe o modelo e o ano com a cilindrada ou o código do motor.");
         }
         log.scrollTop = log.scrollHeight;
         return;
