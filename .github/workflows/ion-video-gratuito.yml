@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - scripts/ion-video-gratuito.py
+      - tests/test_ion_video.py
+      - ion-central-comandos.html
       - .github/workflows/ion-video-gratuito.yml
 permissions:
   contents: read
@@ -17,6 +19,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Verificar sintaxe do gerador
         run: python3 -m py_compile scripts/ion-video-gratuito.py
+      - name: Executar testes unitarios do ION
+        run: python3 -m unittest discover -s tests -p 'test_ion_video.py' -v
       - name: Instalar FFmpeg gratuito
         run: |
           sudo apt-get update -qq
@@ -49,6 +53,7 @@ jobs:
             echo "MP4 ausente: verificar etapa anterior nos logs."
           fi
       - name: Disponibilizar arquivo
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: ion-video-gratuito-15s
