@@ -693,6 +693,40 @@ function loginPage(clientId) {
         saveHistory();
       };
       let { command, videoRequest, trafficRequest, scriptParts } = parseCommand(request);
+      if (/\\b(?:desenho|desenhe|esquema|diagrama|ilustracao)\\b/.test(command)
+          && /\\b(?:sincronismo|correia dentada|ponto da correia)\\b/.test(command)) {
+        const desenho = \`<svg xmlns="http://www.w3.org/2000/svg" width="640" height="420" viewBox="0 0 640 420">
+          <rect width="640" height="420" rx="20" fill="#142233"/>
+          <g font-family="sans-serif" fill="#f0f5fa">
+            <text x="32" y="54" font-size="30">Sincronismo do motor</text>
+            <text x="32" y="86" font-size="16">Esquema conceitual • sem marcas de montagem</text>
+            <text x="325" y="160" font-size="23">Comando de válvulas</text>
+            <text x="325" y="310" font-size="23">Virabrequim</text>
+            <text x="325" y="232" font-size="19" fill="#a7e8d7">Correia dentada</text>
+          </g>
+          <path d="M120 151 A65 65 0 0 1 250 151 L227 302 A42 42 0 0 1 143 302 Z" fill="none" stroke="#76ddc0" stroke-width="9"/>
+          <g fill="#28516c" stroke="#a9c8dc" stroke-width="3">
+            <circle cx="185" cy="151" r="54"/><circle cx="185" cy="302" r="32"/>
+            <circle cx="185" cy="151" r="10"/><circle cx="185" cy="302" r="7"/>
+          </g>
+          <path d="M246 151H308 M237 224H308 M222 302H308" stroke="#a9c8dc" stroke-width="2"/>
+        </svg>\`;
+        const url = URL.createObjectURL(new Blob([desenho], { type: "image/svg+xml" }));
+        videoUrls.push(url);
+        const figura = document.createElement("img");
+        figura.src = url;
+        figura.alt = "Esquema do comando de válvulas e do virabrequim ligados pela correia dentada.";
+        figura.style.cssText = "display:block;width:100%;max-width:40rem;border-radius:1rem";
+        const baixar = document.createElement("a");
+        baixar.href = url;
+        baixar.download = "sincronismo-do-motor.svg";
+        baixar.textContent = "Baixar esquema";
+        update("Aqui está o esquema da correia dentada. Para indicar as marcas de montagem do AP 1.8, preciso do modelo, ano, código do motor e da página aplicável do manual.");
+        item.append(figura, baixar);
+        log.scrollTop = log.scrollHeight;
+        return;
+      }
+
       if (/\\b(?:onde (?:eu )?(?:estou|to)|onde (?:o|meu) celular esta|minha localizacao|localizacao (?:atual|do celular))\\b/.test(command)) {
         if (!navigator.geolocation) {
           update("Este navegador não oferece localização.");
