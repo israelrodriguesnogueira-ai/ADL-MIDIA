@@ -6,6 +6,7 @@ on:
       - "integracoes/ion-roteador-operadores.mjs"
       - "integracoes/ion-motor-worker.mjs"
       - "testes/ion-roteador-operadores.test.mjs"
+      - "testes/ion-motor-integracao.test.mjs"
       - ".github/workflows/ion-roteador-testes.yml"
   workflow_dispatch:
 permissions:
@@ -24,4 +25,4 @@ jobs:
           node --check integracoes/ion-roteador-operadores.mjs
           node --check integracoes/ion-motor-worker.mjs
       - name: Executar testes
-        run: node --test testes/ion-roteador-operadores.test.mjs
+        run: node --test testes/ion-roteador-operadores.test.mjs testes/ion-motor-integracao.test.mjs
