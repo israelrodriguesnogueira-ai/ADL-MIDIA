@@ -1,8 +1,30 @@
 import { protectOwnerRoute } from "../integracoes/ion-controle-dono.mjs";
+import { planejarExecucao } from "../integracoes/ion-roteador-fase3.mjs";
 
 export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
+    if (path === "/api/comandos/planejar") {
+      if (request.method !== "POST") return new Response("Método indisponível.", { status: 405 });
+      const ownerEmail = env.ION_OWNER_EMAIL?.trim().toLowerCase();
+      const audience = env.ION_GOOGLE_CLIENT_ID?.trim();
+      if (!ownerEmail?.endsWith("@gmail.com") || !/^[a-z0-9-]+\\.apps\\.googleusercontent\\.com$/.test(audience ?? "")) {
+        return Response.json({ erro: "Autenticação não configurada." }, { status: 503 });
+      }
+      const ownerRoute = protectOwnerRoute({
+        owner: { issuer: GOOGLE_ISSUER, subject: ownerEmail },
+        verifySession: () => verifyGoogleIdentity(request, audience),
+        audit: ({ actor, ...event }) => console.warn(JSON.stringify(event)),
+        action: "planejar_comando", resource: "ion",
+      }, async () => {
+        const body = await request.json().catch(() => null);
+        if (!body || typeof body.texto !== "string" || body.texto.length > 500)
+          return Response.json({ erro: "Comando inválido." }, { status: 400 });
+        const plano = planejarExecucao(body.texto, {});
+        return Response.json(plano, { headers: { "Cache-Control": "no-store" } });
+      });
+      return ownerRoute(request);
+    }
     if (path === "/api/video/transito") {
       if (request.method !== "POST") return new Response("Método indisponível.", { status: 405, headers: { Allow: "POST" } });
       const ownerEmail = env.ION_OWNER_EMAIL?.trim().toLowerCase();
@@ -507,7 +529,28 @@ function loginPage(clientId) {
         return;
       }
       if (!videoRequest && !trafficRequest) {
-        update("Posso criar um vídeo de teste ou montar um vídeo com suas frases. Exemplo: Crie um vídeo para mim: O primeiro passo é difícil. Tente mais uma vez.");
+        try {
+          const response = await fetch("/api/comandos/planejar", {
+            method: "POST",
+            headers: { Authorization: "Bearer " + credential, "Content-Type": "application/json" },
+            body: JSON.stringify({ texto: request }),
+            cache: "no-store",
+          });
+          const plano = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            update("Não foi possível interpretar o comando: " + (plano.erro || "HTTP " + response.status));
+          } else if (plano.tipo === "imagem") {
+            update("Pedido de imagem identificado. O motor de imagens ainda não está conectado e validado nesta interface; nenhuma imagem foi gerada.");
+          } else if (plano.tipo === "financeiro") {
+            update("Pedido financeiro identificado. O executor financeiro ainda não está conectado e validado; nenhuma operação foi realizada.");
+          } else if (plano.tipo === "video") {
+            update("Pedido de vídeo identificado, mas este tema ainda não tem executor conectado e validado.");
+          } else {
+            update("Entendi sua mensagem, mas o núcleo de conversação inteligente ainda não está conectado. Não vou simular uma resposta.");
+          }
+        } catch {
+          update("Falha de conexão com o roteador. Nenhuma tarefa foi executada.");
+        }
         return;
       }
       if (trafficRequest) {
