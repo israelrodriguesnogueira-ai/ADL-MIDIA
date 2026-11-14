@@ -687,16 +687,26 @@ function loginPage(clientId) {
           send.disabled = microphone.disabled = true;
           body.textContent = "Analisando a foto…";
           try {
-            const foto = await createImageBitmap(fotoAnterior);
-            const tela = document.createElement("canvas");
-            try {
-              const escala = Math.min(1, 1024 / Math.max(foto.width, foto.height));
-              tela.width = Math.max(1, Math.round(foto.width * escala));
-              tela.height = Math.max(1, Math.round(foto.height * escala));
-              tela.getContext("2d").drawImage(foto, 0, 0, tela.width, tela.height);
-            } finally { foto.close(); }
-            const jpeg = await new Promise(resolve => tela.toBlob(resolve, "image/jpeg", .82));
-            if (!jpeg) throw Error();
+            const assinatura = new Uint8Array(await fotoAnterior.slice(0, 3).arrayBuffer());
+            let jpeg = fotoAnterior;
+            if (fotoAnterior.size > 2_000_000 || assinatura[0] !== 255 || assinatura[1] !== 216 || assinatura[2] !== 255) {
+              const url = URL.createObjectURL(fotoAnterior);
+              try {
+                const foto = new Image();
+                await new Promise((resolve, reject) => {
+                  foto.onload = resolve;
+                  foto.onerror = reject;
+                  foto.src = url;
+                });
+                const tela = document.createElement("canvas");
+                const escala = Math.min(1, 1024 / Math.max(foto.naturalWidth, foto.naturalHeight));
+                tela.width = Math.max(1, Math.round(foto.naturalWidth * escala));
+                tela.height = Math.max(1, Math.round(foto.naturalHeight * escala));
+                tela.getContext("2d").drawImage(foto, 0, 0, tela.width, tela.height);
+                jpeg = await new Promise(resolve => tela.toBlob(resolve, "image/jpeg", .82));
+                if (!jpeg) throw new Error("Conversão indisponível");
+              } finally { URL.revokeObjectURL(url); }
+            }
             const resposta = await fetch("/api/foto", {
               method: "POST",
               headers: {
@@ -705,8 +715,8 @@ function loginPage(clientId) {
               },
               body: jpeg,
             });
-            const payload = await resposta.json();
-            update(resposta.ok ? payload.texto : payload.erro || "Não consegui analisar a foto.");
+            const payload = await resposta.json().catch(() => null);
+            update(resposta.ok && payload?.texto ? payload.texto : payload?.erro || "A análise da foto não retornou uma descrição (HTTP " + resposta.status + ").");
           } catch {
             update("Não consegui preparar ou enviar a foto para análise.");
           } finally {
