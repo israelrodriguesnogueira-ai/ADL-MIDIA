@@ -179,9 +179,6 @@ async function responderConversa(request, env) {
     action: "conversar_com_ion",
     resource: "ion",
   }, async () => {
-    if (!env.ION_AI || env.ION_VISION_FREE_ENABLED !== "true") {
-      return Response.json({ erro: "Modelo de conversa aguardando ativação no plano gratuito." }, { status: 503 });
-    }
     const body = await request.text();
     if (body.length > 24000) return Response.json({ erro: "Mensagem muito longa." }, { status: 413 });
     let mensagens;
@@ -193,6 +190,11 @@ async function responderConversa(request, env) {
           || typeof m.content !== "string" || !m.content.trim() || m.content.length > 2000)
         || mensagens.at(-1).role !== "user") {
       return Response.json({ erro: "Histórico de conversa inválido." }, { status: 400 });
+    }
+    const previsao = await consultarPrevisao(mensagens);
+    if (previsao) return Response.json({ texto: previsao }, { headers: { "Cache-Control": "no-store" } });
+    if (!env.ION_AI || env.ION_VISION_FREE_ENABLED !== "true") {
+      return Response.json({ erro: "Modelo de conversa aguardando ativação no plano gratuito." }, { status: 503 });
     }
     try {
       const resposta = await env.ION_AI.run("@cf/meta/llama-3.1-8b-instruct-fast", {
@@ -211,6 +213,55 @@ async function responderConversa(request, env) {
       return Response.json({ erro: "O núcleo de conversa está temporariamente indisponível." }, { status: 502 });
     }
   })(request);
+}
+
+async function consultarPrevisao(mensagens) {
+  const pedido = mensagens.at(-1).content.trim();
+  const perguntaCidade = "Qual cidade e estado você quer consultar para a previsão do tempo?";
+  const continuacao = mensagens.at(-2)?.content === perguntaCidade;
+  const clima = /previs[aã]o do tempo|vai chover|como est[aá] o tempo/i;
+  if (!continuacao && !clima.test(pedido)) return null;
+  const local = (continuacao && !clima.test(pedido) ? pedido : pedido.match(/\b(?:em|para)\s+(.+)$/i)?.[1] || "")
+    .replace(/\b(?:para\s+)?(?:hoje|amanh[ãa])\b/gi, "").replace(/[?.!]\s*$/, "").trim();
+  const anterior = mensagens.at(-3)?.content || "";
+  const amanha = /\bamanh[ãa]/i.test(continuacao ? anterior : pedido);
+  if (!local || local.length > 120) return perguntaCidade;
+  try {
+    const [cidade, estado] = local.split(/[,/]/).map(t => t.trim());
+    const busca = new URL("https://geocoding-api.open-meteo.com/v1/search");
+    busca.search = new URLSearchParams({ name: cidade, count: "10", language: "pt", countryCode: "BR" });
+    const obter = async url => {
+      const resposta = await fetch(url, { signal: AbortSignal.timeout(6000) });
+      if (!resposta.ok) throw new Error();
+      return resposta.json();
+    };
+    const { results = [] } = await obter(busca);
+    const candidatos = results.filter(r => r.country_code === "BR");
+    const normalizar = t => t?.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const estados = ["AC:Acre","AL:Alagoas","AP:Amapá","AM:Amazonas","BA:Bahia","CE:Ceará","DF:Distrito Federal","ES:Espírito Santo","GO:Goiás","MA:Maranhão","MT:Mato Grosso","MS:Mato Grosso do Sul","MG:Minas Gerais","PA:Pará","PB:Paraíba","PR:Paraná","PE:Pernambuco","PI:Piauí","RJ:Rio de Janeiro","RN:Rio Grande do Norte","RS:Rio Grande do Sul","RO:Rondônia","RR:Roraima","SC:Santa Catarina","SP:São Paulo","SE:Sergipe","TO:Tocantins"];
+    const uf = estados.find(t => t.startsWith(estado?.toUpperCase() + ":"))?.slice(3) || estado;
+    const exatos = candidatos.filter(r => normalizar(r.name) === normalizar(cidade)
+      && (!uf || normalizar(r.admin1) === normalizar(uf)));
+    if (!exatos.length) return perguntaCidade;
+    if (new Set(exatos.map(r => r.admin1)).size > 1) return perguntaCidade;
+    const lugar = exatos[0];
+    const url = new URL("https://api.open-meteo.com/v1/forecast");
+    url.search = new URLSearchParams({
+      latitude: lugar.latitude, longitude: lugar.longitude, timezone: "auto", forecast_days: "2",
+      daily: "temperature_2m_min,temperature_2m_max,precipitation_probability_max",
+    });
+    const { daily } = await obter(url);
+    const i = amanha ? 1 : 0;
+    const min = daily?.temperature_2m_min?.[i], max = daily?.temperature_2m_max?.[i];
+    const chuva = daily?.precipitation_probability_max?.[i];
+    if (![min, max, chuva].every(Number.isFinite) || !daily.time?.[i]) throw new Error();
+    const data = daily.time[i].split("-").reverse().join("/");
+    return "Previsão para " + lugar.name + ", " + lugar.admin1 + " (" + data + "). Mínima de "
+      + Math.round(min) + " °C, máxima de " + Math.round(max) + " °C e chance máxima de chuva de "
+      + chuva + "% durante o dia.\nFonte: Open-Meteo — https://open-meteo.com/";
+  } catch {
+    return "A fonte de previsão está indisponível agora. Tente novamente em instantes.";
+  }
 }
 
 const GOOGLE_ISSUER = "https://accounts.google.com";
