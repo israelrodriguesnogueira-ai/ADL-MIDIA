@@ -15,6 +15,8 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
+      - name: Verificar sintaxe do gerador
+        run: python3 -m py_compile scripts/ion-video-gratuito.py
       - name: Instalar FFmpeg gratuito
         run: |
           sudo apt-get update -qq
@@ -29,11 +31,23 @@ jobs:
           command -v ffprobe
           ffmpeg -version
           ffprobe -version
+      - name: Verificar sintetizador em português
+        run: |
+          espeak-ng --voices=pt | head -n 8
       - name: Gerar MP4 vertical sem API paga
         run: python3 scripts/ion-video-gratuito.py
       - name: Validar duração, resolução e fluxos
         run: |
           ffprobe -v error -show_entries format=duration -show_entries stream=codec_type,width,height -of json saida/ion-transito-15s.mp4
+      - name: Registrar diagnostico de exportacao
+        if: always()
+        run: |
+          if test -f saida/ion-transito-15s.mp4; then
+            ls -lh saida/ion-transito-15s.mp4
+            ffprobe -v error -show_entries format=duration,size -show_entries stream=codec_type,width,height -of json saida/ion-transito-15s.mp4
+          else
+            echo "MP4 ausente: verificar etapa anterior nos logs."
+          fi
       - name: Disponibilizar arquivo
         uses: actions/upload-artifact@v4
         with:
