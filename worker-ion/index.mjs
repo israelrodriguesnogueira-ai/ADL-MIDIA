@@ -695,13 +695,20 @@ function loginPage(clientId) {
       let { command, videoRequest, trafficRequest, scriptParts } = parseCommand(request);
       if (/\\b(?:sincronismo|correia dentada|ponto da correia)\\b/.test(command)
           && /\\b(?:desenho|desenha|desenhe|esquema|diagrama|ilustracao)\\b/.test(command)) {
-        if (/\\bc4\\s+(?:pallas|palas|pala|palace)\\b/.test(command) && /\\b2\\s+0\\b/.test(command)) {
-          update("Você pediu o sincronismo do Citroën C4 Pallas 2.0. A Raven publica uma referência técnica para a variante EW10A/RFJ. Confirme o código do motor antes de aplicar as marcas da figura.");
+        const pallas = textos => textos.some(t => /\\bc4\\s+(?:pallas|palas|pala|palace)\\b/.test(t))
+          && textos.some(t => /\\b2\\s+0\\b|\\b(?:ew10a|rfj)\\b/.test(t));
+        const historicoTecnico = current.slice(0, -2).filter(m => m.who === "Você")
+          .slice(-3).map(m => m.text.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
+            .toLowerCase().replace(/[.,!?]/g, " ").replace(/\\s+/g, " "));
+        const pedidoDoC4 = pallas([command]) || (/\\b(?:desse|deste|dele|mesmo)\\b/.test(command)
+          && pallas([command, historicoTecnico.at(-1) || ""]));
+        if (pedidoDoC4) {
+          update("Resultado do catálogo: Citroën C4 Pallas 2.0 16V — família EW10A/RFJ. A Raven inclui o C4 Pallas nessa aplicação. As fotos da matéria técnica mostram a referência do virabrequim para câmbio manual e automático. Escolha a figura do seu tipo de câmbio.");
           const referencia = document.createElement("a");
           referencia.href = "https://www.ravenferramentas.com.br/Uploads/Ravenews31.pdf";
           referencia.target = "_blank";
           referencia.rel = "noopener noreferrer";
-          referencia.textContent = "Abrir referência técnica Raven — EW10A/RFJ";
+          referencia.textContent = "Ver fotos de sincronismo — Raven EW10A/RFJ";
           item.append(referencia);
           log.scrollTop = log.scrollHeight;
           return;
