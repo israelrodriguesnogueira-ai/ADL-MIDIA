@@ -233,7 +233,7 @@ function loginPage(clientId) {
 <meta name="theme-color" content="#101827">
 <title>Ion</title>
 <style>
-  :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101827; color: #f3f6fc; }
+  :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #17181a; color: #f3f3f4; }
   body { margin: 0; }
   main { max-width: 48rem; margin: auto; padding: 3rem 1.25rem; }
   h1 { margin-top: 0; }
@@ -245,45 +245,34 @@ function loginPage(clientId) {
   a, button { display: inline-flex; align-items: center; min-height: 44px; }
   a { color: #a8d1ff; }
   button { font: inherit; padding: 0 1rem; }
-  #comando-ion { display: grid; gap: .5rem; margin: 1.25rem 0; }
-  #pedido-ion { font: inherit; padding: .75rem; border: 1px solid #64748b; border-radius: .5rem; }
-  #acoes-ion { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
-  #acoes-ion button { border: 0; border-radius: 999px; }
-  #enviar-ion { color: #101827; background: #a8d1ff; }
-  #transito-ion { color: #e3edff; background: #243a55; }
-  #acoes-ion button:disabled { opacity: .55; }
-  #areas { margin-top: .75rem; }
-  #conversa-ion { max-height: 55vh; overflow: auto; margin-bottom: .5rem; }
-  #conversa-ion li p { white-space: pre-wrap; overflow-wrap: anywhere; }
-  #conversa-ion .msg-user { margin-left: 12%; background: #243a55; }
+  #painel:not([hidden]) { display: flex; flex-direction: column; height: 100dvh; }
+  main:has(#painel:not([hidden])) { max-width: 58rem; padding: 0; }
+  .ion-top { display: flex; align-items: center; gap: .6rem; padding: .6rem 1rem; flex-shrink: 0; }
+  .ion-top h1 { flex: 1; margin: 0; font-size: 1.1rem; }
+  #painel button { border: 0; border-radius: 999px; background: transparent; color: inherit; justify-content: center; }
+  #painel button:hover { background: #ffffff12; }
+  #painel button:focus-visible, #pedido-ion:focus-visible, #painel a:focus-visible { outline: 2px solid #a8d1ff; outline-offset: 2px; }
+  #conversa-ion { flex: 1; min-height: 0; overflow: auto; align-content: start; overscroll-behavior: contain; margin: 0; padding: .8rem 1rem 1.25rem; gap: 1.1rem; }
+  #conversa-ion li { border: 0; background: transparent; padding: .4rem 0; min-width: 0; }
+  #conversa-ion li p { color: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+  #conversa-ion .msg-user { justify-self: end; max-width: 85%; padding: .65rem .95rem; border-radius: 1.2rem; background: #ffffff12; }
+  #conversa-ion .msg-user p { margin-bottom: .2rem; }
   #conversa-ion video { display: block; width: 100%; max-height: 22rem; margin-top: .75rem; }
-  #pedido-ion { box-sizing: border-box; width: 100%; resize: vertical; }
-  #painel:not([hidden]) { display: flex; flex-direction: column; min-height: 88dvh; }
-  main:has(#painel:not([hidden])) { padding: .75rem 1rem 0; }
-  .ion-top, .ion-compose { display: flex; align-items: center; gap: .5rem; }
-  .ion-top h1 { flex: 1; margin: 0; font-size: 1.25rem; }
-  .ion-top button, .ion-compose button, #ion-menu button, #anexos-ion button { border-radius: 999px; border: 1px solid #3b4b66; background: #19253a; color: #f3f6fc; }
-  .ion-compose textarea { flex: 1; min-width: 0; background: transparent; }
-  #enviar-ion { padding: 0 .7rem; }
-  #conversa-ion { flex: 1; max-height: 62dvh; }
-  #comando-ion { position: sticky; bottom: 0; background: #101827; padding: .6rem 0 max(.6rem, env(safe-area-inset-bottom)); margin: 0; }
+  #comando-ion { display: grid; gap: .4rem; margin: 0; flex-shrink: 0; padding: .5rem max(.75rem, env(safe-area-inset-right)) max(.65rem, env(safe-area-inset-bottom)) max(.75rem, env(safe-area-inset-left)); }
+  .ion-compose { display: flex; align-items: flex-end; gap: .25rem; border: 1px solid #ffffff26; background: #ffffff09; border-radius: 1.5rem; padding: .35rem; }
+  #pedido-ion { flex: 1; min-width: 0; width: 100%; box-sizing: border-box; border: 0; background: transparent; color: inherit; resize: none; font: inherit; line-height: 1.4; padding: .65rem .2rem; }
+  .ion-compose button { min-width: 44px; padding: 0 .45rem; flex-shrink: 0; }
+  #painel #enviar-ion { background: #f5f5f6; color: #15171b; font-size: 1.35rem; }
+  #painel #voz-ion[aria-pressed="true"] { background: #a8d1ff; color: #101827; }
+  #painel button:disabled { opacity: .5; }
+  #painel #cancelar-video { background: #8b3030; color: white; }
   #ajuda-ion, #anexo-status { margin: 0; font-size: .85rem; }
-  #ion-menu { position: fixed; inset: 0 auto 0 0; margin: 0; width: min(85vw, 24rem); height: 100dvh; max-height: 100dvh; box-sizing: border-box; border: 1px solid #3b4b66; background: #101827; color: #f3f6fc; padding: 1rem; }
+  #ajuda-ion:empty, #anexo-status:empty { display: none; }
+  #ion-menu { position: fixed; inset: 0 auto 0 0; margin: 0; width: min(85vw, 24rem); height: 100dvh; max-height: 100dvh; box-sizing: border-box; border: 1px solid #ffffff26; background: #202124; color: inherit; padding: 1rem; }
   #ion-menu::backdrop { background: #0009; }
   #historico-ion button { width: 100%; text-align: left; overflow-wrap: anywhere; }
   #anexos-ion:not([hidden]) { display: flex; gap: .5rem; flex-wrap: wrap; }
   .ion-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-  #painel:not([hidden]) { height: calc(100dvh - 1rem); min-height: 0; }
-  .ion-top { padding: .35rem 0; flex-shrink: 0; }
-  #conversa-ion { min-height: 0; max-height: none; align-content: start; overscroll-behavior: contain; }
-  #conversa-ion li { border: 0; background: transparent; padding: .75rem; }
-  #conversa-ion .msg-user { justify-self: end; max-width: 88%; background: #243a55; }
-  #comando-ion { position: static; flex-shrink: 0; }
-  .ion-compose { border: 1px solid #3b4b66; border-radius: 1.5rem; padding: .3rem; }
-  .ion-compose #pedido-ion { border: 0; resize: none; min-height: 44px; }
-  .ion-compose button { justify-content: center; padding: 0 .6rem; flex-shrink: 0; }
-  #enviar-ion { background: #a8d1ff; color: #101827; }
-  #cancelar-video { background: #8b3030; color: white; }
   button[hidden] { display: none; }
 </style>
 <main>
@@ -307,14 +296,12 @@ function loginPage(clientId) {
     </dialog>
     <ul id="conversa-ion" role="log" aria-label="Conversa com o Ion"></ul>
     <form id="comando-ion">
-
-
       <div class="ion-compose">
         <button id="mais-ion" type="button" aria-label="Anexar câmera, fotos ou arquivos" aria-expanded="false" aria-controls="anexos-ion">+</button>
         <label for="pedido-ion" class="ion-label">Mensagem para o Ion</label>
         <textarea id="pedido-ion" rows="2" placeholder="Mensagem para o Ion" maxlength="500" required></textarea>
         <button id="voz-ion" type="button" aria-label="Iniciar ditado em português" aria-pressed="false">🎙</button>
-        <button id="enviar-ion" type="submit">Enviar</button>
+        <button id="enviar-ion" type="submit" aria-label="Enviar mensagem">↑</button>
         <button id="cancelar-video" type="button" hidden>Parar</button>
       </div>
       <div id="anexos-ion" hidden>
