@@ -1,3 +1,4 @@
+import { identificarOperador, respostaSemExecutor } from "./ion-roteador-operadores.mjs";
 // ION - motor experimental para Cloudflare Workers.
 // NÃO publicar sem configurar autenticação e testar em ambiente isolado.
 // Secrets: ION_API_ACCESS_TOKEN; opcionais AI_API_KEY, AI_BASE_URL, AI_MODEL.
@@ -20,9 +21,10 @@ export default {async fetch(request,env){
  let body;try{body=await request.json()}catch{return json({erro:"JSON inválido"},400)}
  const comando=body?.comando;
  if(typeof comando!=="string"||!comando.trim()||comando.length>3000)return json({erro:"Comando inválido"},400);
- const plano=classify(comando);
+ const roteamento=identificarOperador(comando);
+ const plano={...classify(comando),operador:roteamento.operador};
  if(env.AI_ENABLED!=="1"||!env.AI_API_KEY||!env.AI_MODEL||!env.AI_BASE_URL)
-   return json({status:"pendente",plano,detalhe:"Motor de IA não habilitado; nenhuma tarefa externa foi executada."});
+   return json({...respostaSemExecutor(roteamento),plano,detalhe:"Motor de IA não habilitado; nenhuma tarefa externa foi executada."});
  const base=String(env.AI_BASE_URL);
  let endpoint;try{endpoint=new URL(base)}catch{return json({erro:"Configuração do provedor inválida"},503)}
  if(endpoint.protocol!=="https:"||!["api.openai.com"].includes(endpoint.hostname))return json({erro:"Provedor não autorizado nesta versão"},503);
