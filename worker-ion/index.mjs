@@ -3,6 +3,50 @@ import { protectOwnerRoute } from "../integracoes/ion-controle-dono.mjs";
 export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
+    if (path === "/api/video/transito") {
+      if (request.method !== "POST") return new Response("Método indisponível.", { status: 405, headers: { Allow: "POST" } });
+      const ownerEmail = env.ION_OWNER_EMAIL?.trim().toLowerCase();
+      const audience = env.ION_GOOGLE_CLIENT_ID?.trim();
+      if (!ownerEmail?.endsWith("@gmail.com") || !/^[a-z0-9-]+\\.apps\\.googleusercontent\\.com$/.test(audience ?? "")) {
+        return Response.json({ erro: "Autenticação não configurada." }, { status: 503 });
+      }
+      const ownerRoute = protectOwnerRoute({
+        owner: { issuer: GOOGLE_ISSUER, subject: ownerEmail },
+        verifySession: () => verifyGoogleIdentity(request, audience),
+        audit: ({ actor, ...event }) => console.warn(JSON.stringify(event)),
+        action: "solicitar_video_transito",
+        resource: "ion",
+      }, async () => {
+        const token = env.ION_GITHUB_ACTIONS_TOKEN;
+        if (!token) return Response.json({ erro: "Integração de vídeo não configurada." }, { status: 503 });
+        let result;
+        try {
+          result = await fetch("https://api.github.com/repos/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/ion-video-gratuito.yml/dispatches", {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer " + token,
+              Accept: "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "User-Agent": "ION-Owner-Worker",
+            },
+            body: JSON.stringify({ ref: "main" }),
+            signal: AbortSignal.timeout(10000),
+          });
+        } catch {
+          return Response.json({ erro: "Não foi possível acionar o gerador." }, { status: 502 });
+        }
+        if (result.status !== 204) {
+          console.warn(JSON.stringify({ event: "ion.video_dispatch_failed", status: result.status }));
+          return Response.json({ erro: "O GitHub não aceitou a solicitação.", codigo: result.status }, { status: 502 });
+        }
+        return Response.json({
+          status: "solicitado",
+          detalhe: "Workflow acionado. O MP4 ainda precisa ser gerado e validado.",
+          acompanhamento: "https://github.com/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/ion-video-gratuito.yml",
+        }, { status: 202 });
+      });
+      return ownerRoute(request);
+    }
     if (path !== "/" && path !== "/verificar-acesso" && path !== "/painel") {
       return new Response("Rota indisponível.", { status: 404 });
     }
