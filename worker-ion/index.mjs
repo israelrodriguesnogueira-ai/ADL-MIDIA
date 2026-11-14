@@ -886,8 +886,15 @@ function loginPage(clientId) {
       if (!mensagem && telefoneInformado && rascunhoAnterior) {
         mensagem = anteriorWhatsApp.text.slice(0, -marcadorWhatsApp.length);
       }
-      if (mensagem) {
-        update(mensagem + marcadorWhatsApp);
+      const pedidoWhatsApp = /\\b(?:whatsapp|whats\\s*app|zap)\\b/i.test(request);
+      if (mensagem || (telefoneInformado && pedidoWhatsApp)) {
+        const editar = document.createElement("textarea");
+        editar.rows = 3;
+        editar.value = mensagem || "";
+        editar.placeholder = "Escreva ou cole a mensagem";
+        editar.setAttribute("aria-label", "Mensagem para o WhatsApp");
+        update(mensagem ? mensagem + marcadorWhatsApp
+          : "Telefone reconhecido. Escreva ou cole abaixo o texto que você quer enviar pelo WhatsApp.");
         const abrir = document.createElement("a");
         abrir.href = "https://wa.me/?text=" + encodeURIComponent(mensagem);
         abrir.target = "_blank";
@@ -906,12 +913,15 @@ function loginPage(clientId) {
         const atualizarDestino = () => {
           const numero = telefone.value.replace(/\\D/g, "");
           const valido = /^[1-9]\\d{7,14}$/.test(numero) && telefone.value.trim().startsWith("+");
-          direto.hidden = !valido;
-          if (valido) direto.href = "https://wa.me/" + numero + "?text=" + encodeURIComponent(mensagem);
+          const texto = editar.value.trim();
+          abrir.hidden = !texto || Boolean(telefoneInformado);
+          abrir.href = "https://wa.me/?text=" + encodeURIComponent(texto);
+          direto.hidden = !valido || !texto;
+          if (valido && texto) direto.href = "https://wa.me/" + numero + "?text=" + encodeURIComponent(texto);
           else direto.removeAttribute("href");
         };
-        telefone.oninput = atualizarDestino;
-        item.append(abrir, document.createElement("br"), telefone);
+        telefone.oninput = editar.oninput = atualizarDestino;
+        item.append(editar, document.createElement("br"), abrir, document.createElement("br"), telefone);
         if (navigator.contacts?.select) {
           const escolher = document.createElement("button");
           escolher.type = "button";
@@ -937,8 +947,8 @@ function loginPage(clientId) {
         item.append(direto);
         if (telefoneInformado) {
           telefone.value = "+55 " + telefoneInformado.slice(2).join(" ");
-          atualizarDestino();
         }
+        atualizarDestino();
         log.scrollTop = log.scrollHeight;
         return;
       }
