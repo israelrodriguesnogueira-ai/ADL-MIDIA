@@ -2,6 +2,9 @@
 export function identificarOperador(comando) {
   if (typeof comando !== "string" || !comando.trim()) return { operador: "entrada", erro: "Comando vazio" };
   const t = comando.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  // Prioriza a ação solicitada: "imagem de carteira digital" não é investimento.
+  if (/\b(imagem|foto|ilustracao|desenho)\b/.test(t) && /\b(criar|crie|gerar|gere|fazer|faca|produzir)\b/.test(t))
+    return { operador: "midia", candidatos: ["midia"], comando };
   const regras = [
     ["financeiro", /carteira|investiment|ibovespa|acoes|bolsa|renda fixa|tesouro|dividend|risco financeiro/],
     ["cientifico", /pesquis|cientific|patente|experimento|prototip|simulac|hipotese|laboratorio/],
