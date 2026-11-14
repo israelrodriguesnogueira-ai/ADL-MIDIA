@@ -231,7 +231,7 @@ function loginPage(clientId) {
   .ion-compose #pedido-ion { border: 0; resize: none; min-height: 44px; }
   .ion-compose button { justify-content: center; padding: 0 .6rem; flex-shrink: 0; }
   #enviar-ion { background: #a8d1ff; color: #101827; }
-  #transito-ion, #cancelar-video { justify-self: start; }
+  #cancelar-video { background: #8b3030; color: white; }
   button[hidden] { display: none; }
 </style>
 <main>
@@ -255,14 +255,15 @@ function loginPage(clientId) {
     </dialog>
     <ul id="conversa-ion" role="log" aria-label="Conversa com o Ion"></ul>
     <form id="comando-ion">
-      <button id="transito-ion" type="button">Criar vídeo de trânsito</button>
-      <button id="cancelar-video" type="button" hidden>Cancelar geração</button>
+
+
       <div class="ion-compose">
         <button id="mais-ion" type="button" aria-label="Anexar câmera, fotos ou arquivos" aria-expanded="false" aria-controls="anexos-ion">+</button>
         <label for="pedido-ion" class="ion-label">Mensagem para o Ion</label>
         <textarea id="pedido-ion" rows="2" placeholder="Mensagem para o Ion" maxlength="500" required></textarea>
-        <button id="voz-ion" type="button" aria-label="Ditar em português">🎙</button>
+        <button id="voz-ion" type="button" aria-label="Iniciar ditado em português" aria-pressed="false">🎙</button>
         <button id="enviar-ion" type="submit">Enviar</button>
+        <button id="cancelar-video" type="button" hidden>Parar</button>
       </div>
       <div id="anexos-ion" hidden>
         <button id="escolher-camera" type="button">Câmera</button>
@@ -287,11 +288,6 @@ function loginPage(clientId) {
     const input = document.getElementById("pedido-ion");
     const send = document.getElementById("enviar-ion");
     const form = document.getElementById("comando-ion");
-    const trafficButton = document.getElementById("transito-ion");
-    trafficButton.onclick = () => {
-      input.value = "Crie um vídeo educativo de trânsito";
-      form.requestSubmit();
-    };
     const log = document.getElementById("conversa-ion");
     const get = id => document.getElementById(id);
     const menu = get("ion-menu");
@@ -311,7 +307,11 @@ function loginPage(clientId) {
     let attachment = null;
     let recording;
     const cancelVideo = get("cancelar-video");
-    cancelVideo.onclick = () => recording?.abort();
+    cancelVideo.onclick = () => {
+      recording?.abort();
+      if (recognition) recognition.abort();
+      help.textContent = "Interrupção solicitada.";
+    };
     const videoUrls = [];
     function saveHistory() {
       if (current.length) saved = [current, ...saved.filter(chat => chat !== current)].slice(0, 20);
@@ -398,7 +398,7 @@ function loginPage(clientId) {
     let recognition;
     microphone.onclick = () => {
       if (send.disabled) return;
-      if (recognition) { recognition.stop(); return; }
+      if (recognition) { recognition.stop(); help.textContent = "Ditado interrompido."; return; }
       if (!Recognition) {
         help.textContent = "Use o microfone do teclado. O navegador não oferece ditado na página.";
         input.focus();
@@ -413,8 +413,8 @@ function loginPage(clientId) {
         const transcript = result[0]?.transcript.trim();
         if (!transcript) return;
         input.value = transcript.slice(0, 500);
-        help.textContent = "Comando de voz enviado.";
-        form.requestSubmit();
+        help.textContent = "Texto reconhecido. Revise e toque em Enviar, ou dite novamente.";
+        input.focus();
       };
       session.onerror = () => {
         if (recognition === session) help.textContent = "O ditado falhou. Você pode usar o microfone do teclado.";
@@ -423,10 +423,12 @@ function loginPage(clientId) {
         if (recognition !== session) return;
         recognition = null;
         microphone.setAttribute("aria-pressed", "false");
+        microphone.setAttribute("aria-label", "Iniciar ditado em português");
       };
       try {
         session.start();
         microphone.setAttribute("aria-pressed", "true");
+        microphone.setAttribute("aria-label", "Parar ditado");
         help.textContent = "Ouvindo em português…";
       } catch {
         recognition = null;
@@ -456,7 +458,8 @@ function loginPage(clientId) {
       const videoRequest = /^(?:quero(?: que voce)? |(?:voce )?(?:pode|poderia|consegue) )?(?:gere|gera|gerar|faca|faz|fazer|crie|cria|criar|produza|produzir|criom|criou) (?:para mim )?(?:um )?(?:video|short)(?: vertical)?(?: para mim)?(?: (.+))?$/.exec(command);
       // Dictation can add words before the verb and move modifiers after the topic.
       const trafficRequest = !scriptParts.length
-        && /\\b(?:gere|gera|gerar|faca|faz|fazer|crie|cria|criar|produza|produzir|criom|criacao)\\b/.test(command)
+        && (/\\b(?:gere|gera|gerar|faca|faz|fazer|crie|cria|criar|produza|produzir|criom|criacao|quero|preciso)\\b/.test(command)
+          || /\\b(?:eu creio|eu crio|criei|criou)\\b/.test(command))
         && /\\b(?:video|short)\\b/.test(command)
         && /\\b(?:transito|seguranca viaria)\\b/.test(command)
         && !/\\b(?:nao|sem|cancele)\\b/.test(command);
@@ -508,10 +511,13 @@ function loginPage(clientId) {
         return;
       }
       if (trafficRequest) {
-        send.disabled = trafficButton.disabled = microphone.disabled = true;
+        send.disabled = microphone.disabled = true;
+        cancelVideo.hidden = false;
+        recording = new AbortController();
         update("Solicitando a geração do vídeo narrado no servidor…");
         try {
           const response = await fetch("/api/video/transito", {
+            signal: recording.signal,
             method: "POST",
             headers: { Authorization: "Bearer " + credential },
             cache: "no-store",
@@ -531,9 +537,11 @@ function loginPage(clientId) {
               : "Não foi possível iniciar a geração: " + (payload.erro || "erro HTTP " + response.status) + ". Nenhum vídeo foi produzido.");
           }
         } catch {
-          update("Falha de conexão com o gerador. Nenhum vídeo foi produzido.");
+          update(recording.signal.aborted ? "Solicitação interrompida. Confirme no GitHub se já foi iniciada." : "Falha de conexão com o gerador. Nenhum vídeo foi produzido.");
         } finally {
-          send.disabled = trafficButton.disabled = microphone.disabled = false;
+          recording = undefined;
+          cancelVideo.hidden = true;
+          send.disabled = microphone.disabled = false;
         }
         return;
       }
@@ -560,7 +568,7 @@ function loginPage(clientId) {
           "Respeite a sinalização. Cuidar no trânsito protege vidas.",
         ];
       }
-      send.disabled = trafficButton.disabled = microphone.disabled = true;
+      send.disabled = microphone.disabled = true;
       recording = new AbortController();
       cancelVideo.hidden = false;
       body.textContent = "Gerando o vídeo experimental. Mantenha esta tela aberta.";
@@ -596,7 +604,7 @@ function loginPage(clientId) {
       } finally {
         recording = undefined;
         cancelVideo.hidden = true;
-        send.disabled = trafficButton.disabled = microphone.disabled = false;
+        send.disabled = microphone.disabled = false;
       }
     };
   }
