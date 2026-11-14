@@ -691,6 +691,37 @@ function loginPage(clientId) {
         saveHistory();
       };
       let { command, videoRequest, trafficRequest, scriptParts } = parseCommand(request);
+      if (/\\b(?:onde (?:eu )?(?:estou|to)|onde (?:o|meu) celular esta|minha localizacao|localizacao (?:atual|do celular))\\b/.test(command)) {
+        if (!navigator.geolocation) {
+          update("Este navegador não oferece localização.");
+          return;
+        }
+        send.disabled = microphone.disabled = true;
+        body.textContent = "Aguardando a localização do celular…";
+        try {
+          const { coords } = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: true, timeout: 12000, maximumAge: 0,
+            });
+          });
+          update("O celular forneceu sua localização, com precisão estimada de " + Math.round(coords.accuracy) + " metros.");
+          const mapa = document.createElement("a");
+          mapa.href = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(coords.latitude + "," + coords.longitude);
+          mapa.target = "_blank";
+          mapa.rel = "noopener noreferrer";
+          mapa.textContent = "Abrir localização no mapa";
+          item.append(mapa);
+          log.scrollTop = log.scrollHeight;
+        } catch (erro) {
+          update(erro?.code === 1
+            ? "Permita a localização para o ION nas configurações do navegador e tente novamente."
+            : "O celular não conseguiu determinar a localização agora. Confira se a localização do aparelho está ligada.");
+        } finally {
+          send.disabled = microphone.disabled = false;
+        }
+        return;
+      }
+
       if (/^(?:(?:voce )?(?:ja )?pode (?:criar|gerar|fazer|produzir|comecar)|vai em frente)$/.test(command)) {
         const previous = current.slice(0, -2).reverse().find(entry => {
           if (entry.who !== "Você") return false;
