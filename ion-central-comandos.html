@@ -2,12 +2,24 @@
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ION | Central de comandos</title>
 <style>body{margin:0;background:#101827;color:#edf3ff;font:16px system-ui}main{max-width:780px;margin:auto;padding:24px}h1{font-size:28px}section{background:#1b2940;padding:20px;border-radius:16px;margin:18px 0}textarea{box-sizing:border-box;width:100%;min-height:100px;background:#0e192b;color:white;border:1px solid #52637c;border-radius:10px;padding:12px;font:inherit}button,a.action{display:inline-block;background:#45b9a3;color:#071923;border:0;border-radius:9px;padding:12px 16px;font-weight:700;margin-top:12px;text-decoration:none;cursor:pointer}a{color:#8fe9db}pre{white-space:pre-wrap;overflow-wrap:anywhere}small{color:#bac8dd}</style></head>
-<body><main><h1>ION — Central de comandos</h1><p>Interface experimental gratuita. Executa comandos locais de orientação e abre a produção de vídeo no GitHub; ainda não é um agente autônomo nem envia tarefas sozinho.</p>
-<section><label for="pedido">Seu comando</label><textarea id="pedido" placeholder="Ex.: criar vídeo educativo de trânsito de 15 segundos"></textarea><button id="executar">Interpretar comando</button><pre id="resultado" aria-live="polite"></pre><div id="acoes"></div></section>
+<body><main><h1>ION — Central de comandos</h1><p>Interface experimental gratuita. Permite ditado em navegadores compatíveis e executa comandos locais de orientação e abre a produção de vídeo no GitHub; ainda não é um agente autônomo nem envia tarefas sozinho.</p>
+<section><label for="pedido">Seu comando</label><textarea id="pedido" placeholder="Ex.: criar vídeo educativo de trânsito de 15 segundos"></textarea><button id="executar">Interpretar comando</button> <button id="falar" type="button">🎙️ Ditar comando</button><pre id="resultado" aria-live="polite"></pre><div id="acoes"></div></section>
 <section><h2>Operação disponível</h2><p>Vídeo educativo vertical de trânsito, 15 segundos, com voz sintética e legendas.</p><a href="https://github.com/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/ion-video-gratuito.yml" target="_blank" rel="noopener">Abrir produção e resultados</a><p><small>No GitHub, escolha Run workflow para gerar sob demanda; após a conclusão, abra o artefato do vídeo. Não há execução automática disparada por esta página.</small></p></section>
-<section><h2>Limites desta versão</h2><p>Sem acesso a microfone, modelo de IA ou execução remota nesta página. Nenhuma chave ou token é solicitado. O processamento ocorre somente pelo workflow do repositório.</p></section>
+<section><h2>Limites desta versão</h2><p>Reconhecimento de voz depende do suporte e da permissão do navegador. Sem modelo de IA ou execução remota nesta página. Nenhuma chave ou token é solicitado. O processamento ocorre somente pelo workflow do repositório.</p></section>
 </main><script>
 const workflow='https://github.com/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/ion-video-gratuito.yml';
+const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+const voiceButton=document.getElementById('falar');
+if(!SpeechRecognition){voiceButton.disabled=true;voiceButton.title='Reconhecimento de voz indisponível neste navegador';}
+else{voiceButton.addEventListener('click',()=>{
+ const recognition=new SpeechRecognition();
+ recognition.lang='pt-BR';recognition.interimResults=false;recognition.maxAlternatives=1;
+ voiceButton.disabled=true;voiceButton.textContent='Ouvindo…';
+ recognition.onresult=e=>{document.getElementById('pedido').value=e.results[0][0].transcript;document.getElementById('executar').click();};
+ recognition.onerror=e=>{document.getElementById('resultado').textContent='Falha no microfone: '+e.error+'. Você pode digitar o comando.';};
+ recognition.onend=()=>{voiceButton.disabled=false;voiceButton.textContent='🎙️ Ditar comando';};
+ try{recognition.start();}catch(e){voiceButton.disabled=false;voiceButton.textContent='🎙️ Ditar comando';document.getElementById('resultado').textContent='Não foi possível iniciar o microfone.';}
+});}
 document.getElementById('executar').addEventListener('click',()=>{
 const q=document.getElementById('pedido').value.toLocaleLowerCase('pt-BR');
 const r=document.getElementById('resultado'),a=document.getElementById('acoes');a.replaceChildren();
