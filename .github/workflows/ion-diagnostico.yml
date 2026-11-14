@@ -1,4 +1,5 @@
 name: Diagnóstico do ION
+# Execução de verificação solicitada em 2026-11-14; sem alterações em segredos ou implantação.
 on:
   workflow_dispatch:
   push:
