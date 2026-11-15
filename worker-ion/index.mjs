@@ -172,6 +172,27 @@ async function analisarFoto(request, env) {
   })(request);
 }
 
+function normalizarPedido(texto) {
+  return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function tipoDeProducao(texto, projeto) {
+  const pedido = normalizarPedido(texto);
+  const temaMusical = /\b(?:cantiga|cancao|musica|melodia|jingle|vinheta|trilha sonora)\b/.test(pedido);
+  const temaVideo = /\b(?:video|short|storyboard|animacao)\b/.test(pedido);
+  const criacao = /\b(?:cri[ae]|criar|faca|faz|fazer|ger[ae]|gerar|produz[ae]|produzir|quero|preciso|mont[ae]|planeje|componh[ae]|compor|elabore|prepare|proposta)\b/.test(pedido);
+  const revisao = /\b(?:ajust[ae]|corrij[ae]|corrige|mud[ae]|mud[eoa]r|troc[ae]|troque|revise|refaca|melhore|mantenha|coloque|acrescente|mais (?:rapido|lento|alegre)|sem (?:voz|letra))\b/.test(pedido);
+  if (/\b(?:so|somente|apenas) (?:o codigo|um codigo|a letra|uma letra|uma explicacao)\b/.test(pedido)) return null;
+  if ((criacao || revisao) && temaVideo) return "video";
+  if ((criacao || revisao) && temaMusical) return "musica";
+  return revisao ? projeto : null;
+}
+
+function aprovacaoProducao(texto) {
+  const pedido = normalizarPedido(texto).replace(/[“”"‘’.,!?:]/g, " ").trim().replace(/\s+/g, " ");
+  return /^(?:(?:aion|ion|ariel) )?(?:(?:ok|sim|certo|beleza) )?(?:aprovo|aprovado|pode executar|execute|pode (?:criar|gerar|produzir|fazer)|vai em frente)(?: (?:isso|a proposta|o roteiro|o video|o jingle|a musica|a melodia|o audio|agora))?(?: por favor)?$/.test(pedido);
+}
+
 function partituraValida(p) {
   return p && typeof p.titulo === "string" && p.titulo.trim() && p.titulo.length <= 100
     && typeof p.letra === "string" && p.letra.length <= 1000
@@ -326,13 +347,12 @@ async function responderConversa(request, env) {
       return Response.json({ erro: "Modelo de conversa aguardando ativação no plano gratuito." }, { status: 503 });
     }
     const pedido = mensagens.at(-1).content;
-    const pedidoDeProducao = /\b(?:crie|cria|criar|fa[çc]a|faz|fazer|gere|gera|gerar|produza|produzir|quero|monte|planeje|componha)\b/i.test(pedido);
-    const temaMusical = /\b(?:cantiga|can[çc][ãa]o|m[úu]sica|melodia|jingle)\b/i.test(pedido);
-    const trabalhoMusical = ultimaPartitura || temaMusical;
-    const temaVideo = /\b(?:v[íi]deo|short|storyboard)\b/i.test(pedido);
-    const trabalhoVideo = ultimoVideo || temaVideo;
-    const precisaProposta = pedidoDeProducao && (temaMusical || temaVideo);
-    const pedidoMusical = precisaProposta && temaMusical && !temaVideo;
+    const anterior = mensagens.at(-3)?.role === "user" ? mensagens.at(-3).content : "";
+    const recuperandoMusica = aprovacaoProducao(pedido) && tipoDeProducao(anterior) === "musica";
+    const projeto = ultimoVideo ? "video" : ultimaPartitura ? "musica" : null;
+    const tipo = recuperandoMusica ? "musica" : tipoDeProducao(pedido, projeto);
+    const trabalhoMusical = tipo === "musica";
+    const trabalhoVideo = tipo === "video";
     const duracao = duracaoSolicitada(pedido)
       ?? (ultimoVideo ? ultimoVideo.cenas.reduce((total, cena) => total + cena.segundos, 0) : null);
     const instrucaoVideo = trabalhoVideo
@@ -349,38 +369,46 @@ async function responderConversa(request, env) {
         + "Cada par é [nota MIDI 45 a 86 ou 0 para pausa, duração em tempos 0.25, 0.5, 1, 1.5 ou 2]. Use 8 a 24 notas, bpm entre 55 e 170 e letra original curta. "
         + "Em revisões, preserve o que o usuário não pediu para mudar. A amostra é instrumental e a letra aparece como texto. "
         + "Se pedirem voz cantada ou criticarem a voz e uma gravação própria permitir avançar, responda somente com {\"acao\":\"pedir_gravacao\"}. "
-        + "Em perguntas sobre outro assunto ou em aprovações sem pedido de alteração, responda normalmente."
         + (ultimaPartitura ? " A última versão é " + JSON.stringify(ultimaPartitura) + "." : "")
       : "";
-    const propostaExigida = pedidoMusical
-      ? " O pedido atual é de criação musical. Entregue a proposta executável no formato JSON acima, sem introdução, sem instruções para o usuário e sem perguntar se deve começar."
-      : "";
-    try {
-      const resposta = await env.ION_AI.run("@cf/meta/llama-3.1-8b-instruct-fast", {
-        ...(pedidoMusical ? { response_format: { type: "json_object" } } : {}),
-        messages: [{
-          role: "system",
-          content: "Você é o Aion. Responda em português brasileiro e use o contexto da conversa. " + instrucaoMusical + instrucaoVideo + " "
-            + "Você pode explicar, analisar texto, elaborar roteiros e produzir código. Quando pedirem um programa ou arquivo de código, entregue o conteúdo completo em um bloco de código identificado pela linguagem, pronto para baixar no menu da resposta. "
+    const instrucaoConversa = "Você é o Aion. Responda em português brasileiro e use o contexto da conversa. ";
+    const orientacaoGeral = "Você pode explicar, analisar texto, elaborar roteiros e produzir código. Quando pedirem um programa ou arquivo de código, entregue o conteúdo completo em um bloco de código identificado pela linguagem, pronto para baixar no menu da resposta. "
             + "A interface do Aion pode ler respostas em voz alta. Quando perguntarem como ouvir uma resposta, indique o botão de alto-falante abaixo dela ou o comando \"Leia a última resposta\". Nunca afirme que a reprodução começou sem confirmação da interface. "
             + "Para manutenção automotiva, diferencie correia dentada, que sincroniza virabrequim e comando de válvulas, da correia de acessórios, que pode acionar o alternador. "
             + "Para marcas de sincronismo, torques e procedimentos específicos, só dê instruções fundamentadas em documentação técnica aplicável. Se ela não estiver disponível na conversa, peça modelo, ano, código do motor e o manual ou a página relevante. "
-            + "Só confirme ações após receber o resultado do sistema. Blocos marcados como javascript ou js podem ser executados pelo usuário no navegador com o botão Executar JavaScript. Quando pedirem código executável no chat, use JavaScript independente, sem bibliotecas ou rede, e mostre o resultado com console.log ou return. Se pedirem para instalar dependências ou executar testes de um projeto, informe que esse executor roda somente JavaScript local. Nunca invente logs, artefatos, links de download ou resultados de testes." + propostaExigida,
+            + "Só confirme ações após receber o resultado do sistema. Blocos marcados como javascript ou js podem ser executados pelo usuário no navegador com o botão Executar JavaScript. Quando pedirem código executável no chat, use JavaScript independente, sem bibliotecas ou rede, e mostre o resultado com console.log ou return. Se pedirem para instalar dependências ou executar testes de um projeto, informe que esse executor roda somente JavaScript local. Nunca invente logs, artefatos, links de download ou resultados de testes.";
+    const instrucaoProducao = instrucaoMusical + instrucaoVideo
+      + " Entregue somente a proposta em JSON válido. O Aion usa a proposta para gerar um arquivo após a aprovação. "
+      + "Se o pedido for de produção, entregue todos os campos do formato pedido, sem código de exemplo ou tutoriais."
+      + (recuperandoMusica ? " Recupere o jingle que o usuário acaba de aprovar. Preserve a letra e o título que já aparecem na conversa." : "");
+    try {
+      const entrada = {
+        ...(tipo ? { response_format: { type: "json_object" } } : {}),
+        messages: [{
+          role: "system",
+          content: instrucaoConversa + (tipo ? instrucaoProducao : orientacaoGeral),
         }, ...mensagens.map(({ role, content }) => ({ role, content }))],
-        max_tokens: trabalhoVideo ? 2200 : 768,
-      });
+        max_tokens: trabalhoVideo ? 2200 : 1000,
+      };
+      let resposta = await env.ION_AI.run("@cf/meta/llama-3.1-8b-instruct-fast", entrada);
+      const lerProposta = valor => {
+        if (valor && typeof valor === "object" && !Array.isArray(valor)) return valor;
+        if (typeof valor !== "string" || valor.length > 12000) return null;
+        try { return JSON.parse(valor.trim().replace(/^```(?:json)?\s*|\s*```$/gi, "")); }
+        catch { return null; }
+      };
+      const propostaValida = proposta => trabalhoMusical
+        ? proposta?.acao === "pedir_gravacao" || (proposta?.acao === "melodia" && partituraValida(proposta))
+        : proposta?.acao === "roteiro_video" && videoValido(proposta)
+          && (duracao == null || proposta.cenas.reduce((soma, cena) => soma + cena.segundos, 0) === duracao);
+      let producao = tipo ? lerProposta(resposta?.response) : null;
+      if (tipo && !propostaValida(producao)) {
+        entrada.messages[0].content += " Refaça a proposta inteira e confira todos os campos antes de responder. Use o esquema JSON fornecido.";
+        resposta = await env.ION_AI.run("@cf/meta/llama-3.1-8b-instruct-fast", entrada);
+        producao = lerProposta(resposta?.response);
+      }
       const texto = resposta?.response;
       const textoValido = typeof texto === "string" && texto.trim() && texto.length <= 12000;
-      let producao = null;
-      if (trabalhoMusical || trabalhoVideo) {
-        if (texto && typeof texto === "object" && !Array.isArray(texto)) {
-          producao = texto;
-        } else if (textoValido) {
-          try {
-            producao = JSON.parse(texto.trim().replace(/^```(?:json)?\s*|\s*```$/gi, ""));
-          } catch {}
-        }
-      }
       const headers = { "Cache-Control": "no-store" };
       if (trabalhoVideo && producao?.acao === "roteiro_video") {
         if (!videoValido(producao) || (duracao != null
@@ -400,8 +428,7 @@ async function responderConversa(request, env) {
         const { titulo, letra, bpm, notas } = producao;
         return Response.json({ partitura: { titulo, letra, bpm, notas } }, { headers });
       }
-      if (!textoValido && !producao) throw new Error("invalid_response");
-      if (precisaProposta) {
+      if (tipo) {
         console.warn(JSON.stringify({ event: "ion.production_proposal_missing" }));
         return Response.json({ erro: "Não consegui montar uma proposta executável para esse pedido. Envie o pedido novamente para eu tentar de novo." }, { status: 502, headers });
       }
@@ -684,6 +711,9 @@ function loginPage(clientId) {
   ${partituraValida.toString()}
   ${videoValido.toString()}
   ${textoRoteiro.toString()}
+  ${normalizarPedido.toString()}
+  ${tipoDeProducao.toString()}
+  ${aprovacaoProducao.toString()}
   ${gerarMelodia.toString()}
   ${codificarWav.toString()}
   ${tratarGravacao.toString()}
@@ -1386,6 +1416,21 @@ function loginPage(clientId) {
       apresentarAudio(item, codificarWav(amostras, taxa), entrada.versaoAudio);
     }
 
+    function entregarMelodia(item, record, partitura, versao, update) {
+      try {
+        apresentarPartitura(item, { partitura, versaoAudio: versao });
+        record.partitura = partitura;
+        record.versaoAudio = versao;
+        update(partitura.titulo + " · Áudio instrumental gerado\\nOuça ou baixe o WAV abaixo."
+          + (partitura.letra ? "\\n\\n" + partitura.letra : ""));
+      } catch {
+        record.partitura = partitura;
+        record.tentarProposta = true;
+        apresentarAprovacao(item, record);
+        update("Não consegui gerar o WAV neste aparelho. Toque em Tentar novamente.");
+      }
+    }
+
     openConversation(current);
     form.onsubmit = async event => {
       event.preventDefault();
@@ -1455,18 +1500,17 @@ function loginPage(clientId) {
       const ultimaProposta = respostaAnteriorDoProjeto?.proposta || respostaAnteriorDoProjeto?.tentarProposta
         ? respostaAnteriorDoProjeto
         : null;
-      const aprovou = !scriptParts.length && /^(?:(?:ok|sim|certo|beleza) )?(?:aprovo|aprovado|pode executar|execute|pode (?:criar|gerar|produzir|fazer)|vai em frente)(?: (?:isso|a proposta|o roteiro|o video|o jingle|a musica|o audio|agora))?$/.test(command.replace(/^ariel /, ""));
-      if (!file && aprovou && !ultimaProposta) {
-        update("Ainda não tenho uma proposta executável nesta resposta. Peça ao Ariel para apresentar ou revisar a proposta. Quando estiver pronta, você verá o botão Executar proposta.");
+      const aprovou = aprovacaoProducao(request);
+      const mensagemAnterior = current[current.length - 4];
+      const recuperarJingle = !file && aprovou && !ultimaProposta
+        && mensagemAnterior?.who === "Você" && tipoDeProducao(mensagemAnterior.text) === "musica";
+      if (!file && aprovou && !ultimaProposta && !recuperarJingle) {
+        update("Ainda não encontrei uma proposta para executar nesta conversa. Peça a criação do áudio ou do vídeo que você quer.");
         return;
       }
       if (!file && aprovou && ultimaProposta) {
         if (partituraValida(ultimaProposta.partitura)) {
-          record.partitura = ultimaProposta.partitura;
-          record.versaoAudio = versaoAnterior + 1;
-          apresentarPartitura(item, record);
-          update(record.partitura.titulo + " · Versão " + record.versaoAudio
-            + " (instrumental). Ouça e baixe abaixo.");
+          entregarMelodia(item, record, ultimaProposta.partitura, versaoAnterior + 1, update);
           return;
         }
         const roteiro = ultimaProposta.roteiroVideo;
@@ -1820,7 +1864,7 @@ function loginPage(clientId) {
       const projetoDeVideo = !file && (
         /\\b(?:crie|cria|criar|faca|faz|fazer|gere|gera|gerar|produza|produzir|quero|monte|planeje|anim[eia])\\b.*\\b(?:video|short|roteiro|animacao)\\b/.test(command)
         || videoValido(respostaAnteriorDoProjeto?.roteiroVideo));
-      if (projetoDeVideo || (!videoRequest && !trafficRequest && !bentoRequest)) {
+      if (recuperarJingle || projetoDeVideo || (!videoRequest && !trafficRequest && !bentoRequest)) {
         const mensagens = current.slice(0, -1).filter(entry =>
           ["Você", "Ion"].includes(entry.who) && entry.text.trim()).slice(-9).map(entry => ({
           role: entry.who === "Você" ? "user" : "assistant",
@@ -1836,7 +1880,9 @@ function loginPage(clientId) {
             body: JSON.stringify({ mensagens, ultimaPartitura, ultimoVideo }),
           });
           const payload = await response.json();
-          if (response.ok && partituraValida(payload.partitura)) {
+          if (recuperarJingle && response.ok && partituraValida(payload.partitura)) {
+            entregarMelodia(item, record, payload.partitura, versaoAnterior + 1, update);
+          } else if (response.ok && partituraValida(payload.partitura)) {
             record.partitura = payload.partitura;
             record.proposta = true;
             const duracao = Math.round(record.partitura.notas.reduce((total, nota) => total + nota[1], 0) * 60 / record.partitura.bpm);

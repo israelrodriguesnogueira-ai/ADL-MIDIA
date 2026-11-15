@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { Script } from "node:vm";
 import worker from "../worker-ion/index.mjs";
 
 const url = "https://ion.example.test/api/video/transito";
@@ -41,6 +42,8 @@ test("interface separates dictation from message submission", async () => {
     ION_GOOGLE_CLIENT_ID: "12345-abc.apps.googleusercontent.com",
   });
   const html = await response.text();
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  assert.doesNotThrow(() => new Script(script));
   assert.ok(html.includes('id="pedido-ion"'));
   assert.ok(html.includes('id="voz-ion"'));
   assert.ok(html.includes('id="enviar-ion"'));
