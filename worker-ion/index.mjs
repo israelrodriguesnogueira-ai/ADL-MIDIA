@@ -178,10 +178,11 @@ function normalizarPedido(texto) {
 
 function tipoDeProducao(texto, projeto) {
   const pedido = normalizarPedido(texto);
-  const temaMusical = /\b(?:cantiga|cancao|musica|melodia|jingle|vinheta|trilha sonora)\b/.test(pedido);
+  const temaMusical = /\b(?:cantiga|cancao|musica|melodia|jingle|jingles|jingo|vinheta|trilha sonora)\b/.test(pedido)
+    || /\baudio\b.*\b(?:letra|musical|cantad[oa]|refr[aã]o)\b/.test(pedido);
   const temaVideo = /\b(?:video|short|storyboard|animacao)\b/.test(pedido);
-  const criacao = /\b(?:cri[ae]|criar|faca|faz|fazer|ger[ae]|gerar|produz[ae]|produzir|quero|preciso|mont[ae]|planeje|componh[ae]|compor|elabore|prepare|proposta)\b/.test(pedido);
-  const revisao = /\b(?:ajust[ae]|corrij[ae]|corrige|mud[ae]|mud[eoa]r|troc[ae]|troque|revise|refaca|melhore|mantenha|coloque|acrescente|mais (?:rapido|lento|alegre)|sem (?:voz|letra))\b/.test(pedido);
+  const criacao = /\b(?:cri[ae]|criar|faca|faz|fazer|ger[ae]|gerar|produz[ae]|produzir|quero|preciso|gostaria|mont[ae]|planeje|componh[ae]|compor|elabore|prepare|personalize|proposta)\b/.test(pedido);
+  const revisao = /\b(?:ajust[ae]|corrij[ae]|corrige|mud[ae]|mud[eoa]r|troc[ae]|troque|revise|refaca|melhore|mantenha|coloque|coloca|poe|inclua|adicione|acrescente|mais (?:rapido|lento|alegre)|sem (?:voz|letra))\b/.test(pedido);
   if (/\b(?:so|somente|apenas) (?:o codigo|um codigo|a letra|uma letra|uma explicacao)\b/.test(pedido)) return null;
   if ((criacao || revisao) && temaVideo) return "video";
   if ((criacao || revisao) && temaMusical) return "musica";
@@ -190,7 +191,11 @@ function tipoDeProducao(texto, projeto) {
 
 function aprovacaoProducao(texto) {
   const pedido = normalizarPedido(texto).replace(/[“”"‘’.,!?:]/g, " ").trim().replace(/\s+/g, " ");
-  return /^(?:(?:aion|ion|ariel) )?(?:(?:ok|sim|certo|beleza) )?(?:aprovo|aprovado|pode executar|execute|pode (?:criar|gerar|produzir|fazer)|vai em frente)(?: (?:isso|a proposta|o roteiro|o video|o jingle|a musica|a melodia|o audio|agora))?(?: por favor)?$/.test(pedido);
+  const instrucao = pedido.replace(/^(?:aion|ion|ariel) /, "")
+    .replace(/^(?:ok|sim|certo|beleza) /, "")
+    .replace(/^(?:eu )?(?:quero|preciso) que (?:voce )?/, "")
+    .replace(/ (?:agora|por favor)$/, "");
+  return /^(?:aprovo|aprovado|execute|executar|pode (?:executar|criar|gerar|produzir|fazer|seguir|continuar|dar (?:sequencia|andamento))|vai em frente|manda ver)(?: (?:isso|a proposta|o roteiro|o video|o jingle|a musica|a melodia|o audio))?(?: agora)?$/.test(instrucao);
 }
 
 function partituraValida(p) {
@@ -372,7 +377,7 @@ async function responderConversa(request, env) {
         + (ultimaPartitura ? " A última versão é " + JSON.stringify(ultimaPartitura) + "." : "")
       : "";
     const instrucaoConversa = "Você é o Aion. Responda em português brasileiro e use o contexto da conversa. ";
-    const orientacaoGeral = "Você pode explicar, analisar texto, elaborar roteiros e produzir código. Quando pedirem um programa ou arquivo de código, entregue o conteúdo completo em um bloco de código identificado pela linguagem, pronto para baixar no menu da resposta. "
+    const orientacaoGeral = "Responda ao objetivo do usuário com o resultado solicitado. Gere código somente se ele pedir explicitamente código, programação ou um arquivo-fonte. Se o usuário pedir um arquivo final ou a execução de uma tarefa, use a capacidade disponível. Quando faltar uma informação indispensável, faça uma pergunta curta e específica. Quando pedirem código, use um bloco identificado pela linguagem. "
             + "A interface do Aion pode ler respostas em voz alta. Quando perguntarem como ouvir uma resposta, indique o botão de alto-falante abaixo dela ou o comando \"Leia a última resposta\". Nunca afirme que a reprodução começou sem confirmação da interface. "
             + "Para manutenção automotiva, diferencie correia dentada, que sincroniza virabrequim e comando de válvulas, da correia de acessórios, que pode acionar o alternador. "
             + "Para marcas de sincronismo, torques e procedimentos específicos, só dê instruções fundamentadas em documentação técnica aplicável. Se ela não estiver disponível na conversa, peça modelo, ano, código do motor e o manual ou a página relevante. "
@@ -683,7 +688,8 @@ function loginPage(clientId) {
         <textarea id="pedido-ion" rows="4" placeholder="Mensagem para o Aion" maxlength="${LIMITE_TEXTO_CONVERSA}"></textarea>
         <div class="ion-compose-actions">
           <button id="mais-ion" type="button" aria-label="Anexar câmera, fotos ou arquivos" aria-expanded="false" aria-controls="anexos-ion">+</button>
-          <button id="voz-ion" type="button" aria-label="Iniciar ditado em português" title="Ditar uma mensagem de texto" aria-pressed="false">🎙</button>
+          <button id="voz-ion" type="button" aria-label="Iniciar ditado em português" title="Ditar uma mensagem de texto" aria-pressed="false">Ditar</button>
+          <button id="gravar-audio" type="button" aria-label="Gravar áudio para enviar" aria-pressed="false">Áudio</button>
           <button id="cancelar-video" type="button" hidden>Parar</button>
           <button id="enviar-ion" type="submit">Enviar</button>
         </div>
@@ -692,8 +698,7 @@ function loginPage(clientId) {
         <button id="escolher-camera" type="button">Câmera</button>
         <button id="escolher-foto" type="button">Fotos</button>
         <button id="escolher-arquivo" type="button">Arquivos</button>
-        <button id="escolher-audio" type="button">Áudio</button>
-        <button id="gravar-audio" type="button" aria-pressed="false">Gravar áudio</button>
+        <button id="escolher-audio" type="button">Anexar áudio</button>
       </div>
       <input type="file" id="camera-ion" accept="image/*" capture="environment" hidden>
       <input type="file" id="foto-ion" accept="image/*" hidden>
@@ -852,6 +857,10 @@ function loginPage(clientId) {
         return;
       }
       if (send.disabled) return;
+      if (recognition) {
+        help.textContent = "Toque em Concluir para terminar o ditado e depois grave o áudio.";
+        return;
+      }
       if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
         help.textContent = "Este navegador não pode gravar aqui. Use +, Áudio para anexar uma gravação.";
         return;
@@ -866,7 +875,8 @@ function loginPage(clientId) {
           clearTimeout(audioTimer);
           stream.getTracks().forEach(track => track.stop());
           audioRecorder = undefined;
-          recordAudio.textContent = "Gravar áudio";
+          recordAudio.textContent = "Áudio";
+          recordAudio.setAttribute("aria-label", "Gravar áudio para enviar");
           recordAudio.setAttribute("aria-pressed", "false");
           send.disabled = microphone.disabled = recordAudio.disabled = false;
         }
@@ -889,6 +899,7 @@ function loginPage(clientId) {
         audioRecorder = recorder;
         recordAudio.disabled = false;
         recordAudio.textContent = "Parar gravação";
+        recordAudio.setAttribute("aria-label", "Parar gravação");
         recordAudio.setAttribute("aria-pressed", "true");
         help.textContent = "Gravando… toque em Parar gravação quando terminar.";
         audioTimer = setTimeout(() => {
@@ -949,7 +960,7 @@ function loginPage(clientId) {
     const microphoneLabel = microphone.getAttribute("aria-label");
     function resetDictation() {
       recognition = null;
-      microphone.textContent = "🎙";
+      microphone.textContent = "Ditar";
       microphone.setAttribute("aria-pressed", "false");
       microphone.setAttribute("aria-label", microphoneLabel);
     }
@@ -1442,6 +1453,7 @@ function loginPage(clientId) {
       const file = attachment || textFile || audioFile;
       if (attachment) ultimaFotoPorConversa.set(current, attachment);
       if ((!request && !file) || send.disabled) return;
+      help.textContent = "";
       if (request.length > input.maxLength) {
         help.textContent = "A mensagem pode ter até " + input.maxLength + " caracteres.";
         input.focus();
@@ -1899,7 +1911,7 @@ function loginPage(clientId) {
             update(textoRoteiro(record.roteiroVideo)
               + "\\n\\nPeça um ajuste ou diga “pode executar” para aprovar este roteiro.");
           } else if (response.ok && payload.pedirGravacao) {
-            update("Grave você cantando ou falando a letra e envie pelo botão +, em Arquivo. Vou ajustar a clareza e o volume da sua gravação.");
+            update("Toque em Áudio para gravar a letra. Depois de parar a gravação, toque em Enviar. Para usar um áudio já gravado, toque em + e escolha Anexar áudio. Vou ajustar a clareza e o volume da sua gravação.");
           } else {
             update(response.ok ? payload.texto : payload.erro);
           }
