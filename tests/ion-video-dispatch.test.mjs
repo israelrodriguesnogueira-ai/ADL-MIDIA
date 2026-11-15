@@ -49,5 +49,5 @@ test("interface separates dictation from message submission", async () => {
   assert.ok(html.includes('Texto reconhecido. Revise e toque em Enviar'));
   assert.ok(!html.includes('help.textContent = "Comando de voz enviado.";'));
   assert.ok(html.includes('signal: recording.signal'));
-  assert.ok(html.includes('microphone.setAttribute("aria-label", "Parar ditado")'));
+  assert.ok(html.includes('microphone.setAttribute("aria-label", "Concluir ditado")'));
 });

@@ -718,7 +718,7 @@ function loginPage(clientId) {
     const cancelVideo = get("cancelar-video");
     cancelVideo.onclick = () => {
       recording?.abort();
-      if (recognition) recognition.abort();
+      cancelDictation();
       help.textContent = "Interrupção solicitada.";
     };
     const videoUrls = [];
@@ -735,9 +735,7 @@ function loginPage(clientId) {
     }
     function openConversation(chat) {
       if (send.disabled) return;
-      recognition?.abort();
-      recognition = null;
-      microphone.setAttribute("aria-pressed", "false");
+      cancelDictation();
       pararLeitura();
       current = chat;
       audioFile = null;
@@ -916,44 +914,95 @@ function loginPage(clientId) {
     const microphone = get("voz-ion");
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition;
+    const microphoneLabel = microphone.getAttribute("aria-label");
+    function resetDictation() {
+      recognition = null;
+      microphone.textContent = "🎙";
+      microphone.setAttribute("aria-pressed", "false");
+      microphone.setAttribute("aria-label", microphoneLabel);
+    }
+    function cancelDictation() {
+      const session = recognition;
+      if (!session) return;
+      resetDictation();
+      session.abort();
+    }
     microphone.onclick = () => {
       if (send.disabled) return;
-      if (recognition) { recognition.stop(); help.textContent = "Ditado interrompido."; return; }
+      if (recognition) {
+        recognition.finish();
+        return;
+      }
       if (!Recognition) {
-        help.textContent = "Use o microfone do teclado. O navegador não oferece ditado na página.";
+        help.textContent = "Use o microfone do teclado para ditar.";
         input.focus();
         return;
       }
       const session = new Recognition();
+      let finishing = false;
+      let startedAt = 0;
+      let quickEnds = 0;
+      let failure = "";
       recognition = session;
       session.lang = "pt-BR";
+      session.continuous = true;
+      session.finish = () => {
+        if (finishing) return;
+        finishing = true;
+        help.textContent = "Concluindo ditado…";
+        session.stop();
+      };
       session.onresult = event => {
-        const result = event.results[event.resultIndex];
-        if (recognition !== session || send.disabled || !result?.isFinal) return;
-        const transcript = result[0]?.transcript.trim();
-        if (!transcript) return;
-        input.value = transcript.slice(0, input.maxLength);
-        help.textContent = "Texto reconhecido. Revise e toque em Enviar, ou dite novamente.";
+        if (recognition !== session) return;
+        for (let index = event.resultIndex; index < event.results.length; index++) {
+          const result = event.results[index];
+          const transcript = result.isFinal && result[0]?.transcript.trim();
+          if (!transcript) continue;
+          const separator = input.value && !/\s$/.test(input.value) ? " " : "";
+          input.value = (input.value + separator + transcript).slice(0, input.maxLength);
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+        if (input.value.length >= input.maxLength) session.finish();
+      };
+      session.onerror = event => {
+        if (recognition !== session || event.error === "no-speech") return;
+        failure = "O ditado foi encerrado pelo navegador. Você pode usar o microfone do teclado.";
+      };
+      const finish = message => {
+        resetDictation();
+        help.textContent = message;
         input.focus();
       };
-      session.onerror = () => {
-        if (recognition === session) help.textContent = "O ditado falhou. Você pode usar o microfone do teclado.";
+      const start = () => {
+        try {
+          startedAt = Date.now();
+          session.start();
+        } catch {
+          finish("Use o microfone do teclado para ditar.");
+        }
       };
       session.onend = () => {
         if (recognition !== session) return;
-        recognition = null;
-        microphone.setAttribute("aria-pressed", "false");
-        microphone.setAttribute("aria-label", "Iniciar ditado em português");
+        if (failure) {
+          finish(failure);
+          return;
+        }
+        if (finishing) {
+          finish("Texto reconhecido. Revise e toque em Enviar.");
+          return;
+        }
+        quickEnds = Date.now() - startedAt < 1000 ? quickEnds + 1 : 0;
+        if (quickEnds >= 2) {
+          finish("O navegador encerrou o ditado. Toque no microfone para continuar.");
+          return;
+        }
+        start();
       };
-      try {
-        session.start();
-        microphone.setAttribute("aria-pressed", "true");
-        microphone.setAttribute("aria-label", "Parar ditado");
-        help.textContent = "Ouvindo em português…";
-      } catch {
-        recognition = null;
-        help.textContent = "Use o microfone do teclado para ditar.";
-      }
+      microphone.textContent = "Concluir";
+      microphone.setAttribute("aria-pressed", "true");
+      microphone.setAttribute("aria-label", "Concluir ditado");
+      help.textContent = "Ouvindo em português… Toque em Concluir quando terminar.";
+      start();
     };
 
     let leitor;
@@ -1293,6 +1342,10 @@ function loginPage(clientId) {
     openConversation(current);
     form.onsubmit = async event => {
       event.preventDefault();
+      if (recognition) {
+        recognition.finish();
+        return;
+      }
       const request = input.value.trim();
       const file = attachment || textFile || audioFile;
       if (attachment) ultimaFotoPorConversa.set(current, attachment);
