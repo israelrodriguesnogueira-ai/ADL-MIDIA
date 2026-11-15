@@ -623,7 +623,7 @@ function loginPage(clientId) {
   #pedido-ion { box-sizing: border-box; width: 100%; resize: vertical; }
   #painel:not([hidden]) { display: flex; flex-direction: column; min-height: 88dvh; }
   main:has(#painel:not([hidden])) { padding: .75rem 1rem 0; }
-  .ion-top, .ion-compose-actions { display: flex; align-items: center; gap: .5rem; }
+  .ion-top { display: flex; align-items: center; gap: .5rem; }
   .ion-top h1 { flex: 1; margin: 0; font-size: 1.25rem; }
   .ion-top button, .ion-compose button, #ion-menu button, #anexos-ion button { border-radius: 999px; border: 1px solid #3b4b66; background: #19253a; color: #f3f6fc; }
   #enviar-ion { padding: 0 .7rem; }
@@ -641,13 +641,14 @@ function loginPage(clientId) {
   #conversa-ion li { border: 0; background: transparent; padding: .75rem; }
   #conversa-ion .msg-user { justify-self: end; max-width: 88%; background: #243a55; }
   #comando-ion { position: static; flex-shrink: 0; }
-  .ion-compose { display: grid; gap: .25rem; border: 1px solid #3b4b66; border-radius: 1.25rem; padding: .4rem; }
-  .ion-compose #pedido-ion { min-width: 0; min-height: 6.5rem; max-height: 16rem; max-height: clamp(6.5rem, 32dvh, 16rem); border: 0; resize: vertical; field-sizing: content; background: transparent; color: inherit; line-height: 1.4; }
-  .ion-compose-actions { flex-wrap: wrap; }
-  .ion-compose button { justify-content: center; min-width: 44px; padding: 0 .6rem; flex-shrink: 0; }
-  #enviar-ion { margin-inline-start: auto; background: #a8d1ff; color: #101827; }
+  .ion-compose { display: flex; align-items: flex-end; gap: .15rem; border: 1px solid #3b4b66; background: #151f31; border-radius: 1.65rem; padding: .2rem; }
+  .ion-compose #pedido-ion { flex: 1; min-width: 0; min-height: 44px; max-height: min(32dvh, 12rem); margin: 0; padding: .65rem .2rem; border: 0; resize: none; field-sizing: content; background: transparent; color: inherit; font-size: 16px; line-height: 1.4; }
+  .ion-compose button { display: inline-grid; place-items: center; width: 44px; height: 44px; min-width: 44px; padding: 0; flex-shrink: 0; border: 0; background: transparent; }
+  .ion-compose button svg { width: 23px; height: 23px; }
+  #gravar-audio, #enviar-ion { background: #4061e8; color: white; }
+  #voz-ion[aria-pressed="true"], #gravar-audio[aria-pressed="true"] { background: #8b3030; color: white; }
   #cancelar-video { background: #8b3030; color: white; }
-  button[hidden] { display: none; }
+  button[hidden], .ion-compose button[hidden] { display: none; }
   .ion-resposta-acoes:not([hidden]) { display: flex; gap: .25rem; flex-wrap: wrap; align-items: center; margin-top: .4rem; }
   .ion-resposta-acoes button, .ion-resposta-acoes summary { min-height: 44px; min-width: 40px; border-radius: .5rem; border: 0; background: transparent; color: #bac8da; padding: 0 .35rem; justify-content: center; cursor: pointer; }
   .ion-resposta-acoes summary { display: flex; list-style: none; }
@@ -684,16 +685,22 @@ function loginPage(clientId) {
 
 
       <div class="ion-compose">
+        <button id="mais-ion" type="button" aria-label="Anexar câmera, fotos ou arquivos" aria-expanded="false" aria-controls="anexos-ion" title="Anexar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
         <label for="pedido-ion" class="ion-label">Mensagem para o Aion</label>
-        <textarea id="pedido-ion" rows="4" placeholder="Mensagem para o Aion" maxlength="${LIMITE_TEXTO_CONVERSA}"></textarea>
-        <div class="ion-compose-actions">
-          <button id="mais-ion" type="button" aria-label="Anexar câmera, fotos ou arquivos" aria-expanded="false" aria-controls="anexos-ion">+</button>
-          <button id="voz-ion" type="button" aria-label="Iniciar ditado em português" title="Ditar uma mensagem de texto" aria-pressed="false">Ditar</button>
-          <button id="gravar-audio" type="button" aria-label="Gravar áudio para enviar" aria-pressed="false">Áudio</button>
-          <button id="cancelar-video" type="button" hidden>Parar</button>
-          <button id="enviar-ion" type="submit">Enviar</button>
-        </div>
+        <textarea id="pedido-ion" rows="1" placeholder="Mensagem para o Aion" maxlength="${LIMITE_TEXTO_CONVERSA}"></textarea>
+        <button id="voz-ion" type="button" aria-label="Iniciar ditado em português" title="Ditar uma mensagem de texto" aria-pressed="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg>
+        </button>
+        <button id="gravar-audio" type="button" aria-label="Gravar áudio para enviar" aria-pressed="false" title="Gravar áudio">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 9v6m4-9v12m5-15v18m5-15v12m4-9v6"/></svg>
+        </button>
+        <button id="enviar-ion" type="submit" aria-label="Enviar mensagem" title="Enviar" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg>
+        </button>
       </div>
+      <button id="cancelar-video" type="button" hidden>Parar</button>
       <div id="anexos-ion" hidden>
         <button id="escolher-camera" type="button">Câmera</button>
         <button id="escolher-foto" type="button">Fotos</button>
@@ -825,8 +832,22 @@ function loginPage(clientId) {
     const attachments = get("anexos-ion");
     const audioPicker = get("audio-ion");
     const recordAudio = get("gravar-audio");
+    const iconeAudio = recordAudio.firstElementChild.cloneNode(true);
     let audioRecorder;
     let audioTimer;
+
+    function atualizarBarra() {
+      const temMensagem = Boolean(input.value.trim() || attachment || textFile || audioFile);
+      send.hidden = !temMensagem || Boolean(audioRecorder);
+      recordAudio.hidden = temMensagem && !audioRecorder;
+      if (!CSS.supports("field-sizing", "content")) {
+        input.style.height = "auto";
+        input.style.height = input.scrollHeight + "px";
+      }
+    }
+    input.addEventListener("input", atualizarBarra);
+    new MutationObserver(atualizarBarra).observe(attachmentStatus, { childList: true });
+
 
     function attachAudio(file) {
       if (file.size === 0 || file.size > 20_000_000) {
@@ -875,7 +896,7 @@ function loginPage(clientId) {
           clearTimeout(audioTimer);
           stream.getTracks().forEach(track => track.stop());
           audioRecorder = undefined;
-          recordAudio.textContent = "Áudio";
+          recordAudio.replaceChildren(iconeAudio.cloneNode(true));
           recordAudio.setAttribute("aria-label", "Gravar áudio para enviar");
           recordAudio.setAttribute("aria-pressed", "false");
           send.disabled = microphone.disabled = recordAudio.disabled = false;
@@ -898,7 +919,7 @@ function loginPage(clientId) {
         recorder.start();
         audioRecorder = recorder;
         recordAudio.disabled = false;
-        recordAudio.textContent = "Parar gravação";
+        recordAudio.textContent = "■";
         recordAudio.setAttribute("aria-label", "Parar gravação");
         recordAudio.setAttribute("aria-pressed", "true");
         help.textContent = "Gravando… toque em Parar gravação quando terminar.";
@@ -958,9 +979,10 @@ function loginPage(clientId) {
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition;
     const microphoneLabel = microphone.getAttribute("aria-label");
+    const iconeMicrofone = microphone.firstElementChild.cloneNode(true);
     function resetDictation() {
       recognition = null;
-      microphone.textContent = "Ditar";
+      microphone.replaceChildren(iconeMicrofone.cloneNode(true));
       microphone.setAttribute("aria-pressed", "false");
       microphone.setAttribute("aria-label", microphoneLabel);
     }
@@ -1041,7 +1063,7 @@ function loginPage(clientId) {
         }
         start();
       };
-      microphone.textContent = "Concluir";
+      microphone.textContent = "✓";
       microphone.setAttribute("aria-pressed", "true");
       microphone.setAttribute("aria-label", "Concluir ditado");
       help.textContent = "Ouvindo em português… Toque em Concluir quando terminar.";
@@ -1443,6 +1465,7 @@ function loginPage(clientId) {
     }
 
     openConversation(current);
+    atualizarBarra();
     form.onsubmit = async event => {
       event.preventDefault();
       if (recognition) {
@@ -1464,6 +1487,7 @@ function loginPage(clientId) {
         const ultimaResposta = findLastMessage(entry => entry.who === "Ion" && entry.text.trim());
         const lerResposta = leitoresPorResposta.get(ultimaResposta);
         input.value = "";
+        atualizarBarra();
         if (lerResposta) await lerResposta();
         else help.textContent = "Ainda não há uma resposta para ler nesta conversa.";
         return;
@@ -1496,6 +1520,7 @@ function loginPage(clientId) {
       current.push({who: "Você", text: request || file.name});
       saveHistory();
       input.value = "";
+      atualizarBarra();
       const record = {who: "Ion", text: ""};
       const { item, body, ouvir, acoes, executarCodigo } = message("Ion", "Entendendo seu pedido…", record);
       current.push(record);
