@@ -323,8 +323,12 @@ async function responderConversa(request, env) {
       return Response.json({ erro: "Modelo de conversa aguardando ativação no plano gratuito." }, { status: 503 });
     }
     const pedido = mensagens.at(-1).content;
-    const trabalhoMusical = ultimaPartitura || /\b(?:cantiga|can[çc][ãa]o|m[úu]sica|melodia|jingle)\b/i.test(pedido);
-    const trabalhoVideo = ultimoVideo || /\b(?:v[íi]deo|short|storyboard|roteiro)\b/i.test(pedido);
+    const pedidoDeProducao = /\b(?:crie|cria|criar|fa[çc]a|faz|fazer|gere|gera|gerar|produza|produzir|quero|monte|planeje|componha)\b/i.test(pedido);
+    const temaMusical = /\b(?:cantiga|can[çc][ãa]o|m[úu]sica|melodia|jingle)\b/i.test(pedido);
+    const trabalhoMusical = ultimaPartitura || temaMusical;
+    const temaVideo = /\b(?:v[íi]deo|short|storyboard)\b/i.test(pedido);
+    const trabalhoVideo = ultimoVideo || temaVideo;
+    const precisaProposta = pedidoDeProducao && (temaMusical || temaVideo);
     const duracao = duracaoSolicitada(pedido)
       ?? (ultimoVideo ? ultimoVideo.cenas.reduce((total, cena) => total + cena.segundos, 0) : null);
     const instrucaoVideo = trabalhoVideo
@@ -383,6 +387,9 @@ async function responderConversa(request, env) {
         }
         const { titulo, letra, bpm, notas } = producao;
         return Response.json({ partitura: { titulo, letra, bpm, notas } }, { headers });
+      }
+      if (precisaProposta) {
+        return Response.json({ erro: "Não consegui montar uma proposta executável para esse pedido. Envie o pedido novamente para eu tentar de novo." }, { status: 502, headers });
       }
       return Response.json({ texto }, { headers });
     } catch {
@@ -720,6 +727,7 @@ function loginPage(clientId) {
         const { item } = message(entry.who, entry.text, entry);
         if (partituraValida(entry.partitura) && entry.versaoAudio) apresentarPartitura(item, entry);
         if (videoValido(entry.roteiroVideo)) apresentarRoteiro(item, entry.roteiroVideo);
+        if (entry.proposta && entry === chat.at(-1)) apresentarAprovacao(item, entry);
         const gravacao = audiosDaSessao.get(entry);
         if (gravacao) apresentarAudio(item, gravacao, entry.versaoAudio);
       }
@@ -889,8 +897,8 @@ function loginPage(clientId) {
         ouvir = document.createElement("button");
         ouvir.type = "button";
         ouvir.textContent = "🔊";
-        ouvir.title = "Ouvir com a voz Faber";
-        ouvir.setAttribute("aria-label", "Ouvir resposta");
+        ouvir.title = "Ler texto da resposta em voz alta";
+        ouvir.setAttribute("aria-label", "Ler texto da resposta em voz alta");
         ouvir.hidden = !content.trim() || content === "Entendendo seu pedido…";
         const reproduzir = async (usarVozLocal = false) => {
           const jaLendo = leitura?.botao === ouvir;
@@ -1131,6 +1139,27 @@ function loginPage(clientId) {
       item.append(audio, baixar);
     }
 
+    function apresentarAprovacao(item, entrada) {
+      const executar = document.createElement("button");
+      executar.type = "button";
+      executar.className = "ion-executar-proposta";
+      executar.textContent = "Executar proposta";
+      executar.onclick = () => {
+        if (send.disabled) return;
+        if (current.at(-1) !== entrada) {
+          help.textContent = "Peça ao Ariel para reapresentar esta proposta antes de executar.";
+          return;
+        }
+        if (input.value.trim() || attachment || textFile || audioFile) {
+          help.textContent = "Envie ou limpe o que está no campo de mensagem antes de executar.";
+          return;
+        }
+        input.value = "Pode executar";
+        form.requestSubmit();
+      };
+      item.append(executar);
+    }
+
     function apresentarRoteiro(item, roteiro) {
       const baixar = document.createElement("a");
       const url = URL.createObjectURL(new Blob([textoRoteiro(roteiro)], { type: "text/plain;charset=utf-8" }));
@@ -1200,7 +1229,11 @@ function loginPage(clientId) {
         : respostaAnteriorDoProjeto?.tentarProposta
           ? current.slice(0, -2).findLast(entrada => entrada.proposta)
           : null;
-      const aprovou = /^(?:aprovo|aprovado|pode executar|execute|pode (?:criar|gerar|produzir)|vai em frente)$/.test(command);
+      const aprovou = /^(?:(?:ok|sim|certo|beleza) )?(?:aprovo|aprovado|pode executar|execute|pode (?:criar|gerar|produzir|fazer)|vai em frente)(?: (?:isso|a proposta|o roteiro|o video|o jingle|a musica|o audio|agora))?$/.test(command.replace(/^ariel /, ""));
+      if (!file && aprovou && !ultimaProposta) {
+        update("Ainda não tenho uma proposta executável nesta resposta. Peça ao Ariel para apresentar ou revisar a proposta. Quando estiver pronta, você verá o botão Executar proposta.");
+        return;
+      }
       if (!file && aprovou && ultimaProposta) {
         if (partituraValida(ultimaProposta.partitura)) {
           record.partitura = ultimaProposta.partitura;
@@ -1574,6 +1607,7 @@ function loginPage(clientId) {
             record.partitura = payload.partitura;
             record.proposta = true;
             const duracao = Math.round(record.partitura.notas.reduce((total, nota) => total + nota[1], 0) * 60 / record.partitura.bpm);
+            apresentarAprovacao(item, record);
             update(record.partitura.titulo + " · Proposta de melodia instrumental"
               + "\\nRitmo: " + record.partitura.bpm + " BPM · Duração: " + duracao + " s"
               + (record.partitura.letra ? "\\n\\n" + record.partitura.letra : "")
@@ -1582,6 +1616,7 @@ function loginPage(clientId) {
             record.roteiroVideo = payload.roteiroVideo;
             record.proposta = true;
             apresentarRoteiro(item, record.roteiroVideo);
+            apresentarAprovacao(item, record);
             update(textoRoteiro(record.roteiroVideo)
               + "\\n\\nPeça um ajuste ou diga “pode executar” para aprovar este roteiro.");
           } else if (response.ok && payload.pedirGravacao) {
