@@ -329,6 +329,7 @@ async function responderConversa(request, env) {
     const temaVideo = /\b(?:v[íi]deo|short|storyboard)\b/i.test(pedido);
     const trabalhoVideo = ultimoVideo || temaVideo;
     const precisaProposta = pedidoDeProducao && (temaMusical || temaVideo);
+    const pedidoMusical = precisaProposta && temaMusical && !temaVideo;
     const duracao = duracaoSolicitada(pedido)
       ?? (ultimoVideo ? ultimoVideo.cenas.reduce((total, cena) => total + cena.segundos, 0) : null);
     const instrucaoVideo = trabalhoVideo
@@ -348,11 +349,12 @@ async function responderConversa(request, env) {
         + "Em perguntas sobre outro assunto ou em aprovações sem pedido de alteração, responda normalmente."
         + (ultimaPartitura ? " A última versão é " + JSON.stringify(ultimaPartitura) + "." : "")
       : "";
-    const propostaExigida = precisaProposta && temaMusical && !temaVideo
+    const propostaExigida = pedidoMusical
       ? " O pedido atual é de criação musical. Entregue a proposta executável no formato JSON acima, sem introdução, sem instruções para o usuário e sem perguntar se deve começar."
       : "";
     try {
       const resposta = await env.ION_AI.run("@cf/meta/llama-3.1-8b-instruct-fast", {
+        ...(pedidoMusical ? { response_format: { type: "json_object" } } : {}),
         messages: [{
           role: "system",
           content: "Você é o ION. Responda em português brasileiro e use o contexto da conversa. " + instrucaoMusical + instrucaoVideo + " "
