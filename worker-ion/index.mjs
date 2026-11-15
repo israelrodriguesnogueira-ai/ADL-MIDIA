@@ -85,7 +85,7 @@ export default {
       ? Response.json({ areas: [
           { nome: "Central 6D", descricao: "Produção de vídeos", url: "https://adl-midia.israelrodriguesnogueira.workers.dev/" },
           { nome: "Shopee Gestão", descricao: "Conexão com a loja pendente" },
-          { nome: "Código-fonte do Ion", descricao: "Cópia ZIP da versão usada pelo Ion.", rotulo: "Baixar código do Ion", url: "https://codeload.github.com/israelrodriguesnogueira-ai/ADL-MIDIA/zip/refs/heads/ion/controle-dono" },
+          { nome: "Código-fonte do Aion", descricao: "Cópia ZIP da versão usada pelo Aion.", rotulo: "Baixar código do Aion", url: "https://codeload.github.com/israelrodriguesnogueira-ai/ADL-MIDIA/zip/refs/heads/ion/controle-dono" },
           { nome: "ADL Auto", descricao: "Integração pendente" },
         ] })
       : Response.json({ acesso: "proprietario", modo: "validacao" }));
@@ -160,7 +160,7 @@ async function analisarFoto(request, env) {
     } catch (erro) {
       console.warn(JSON.stringify({ event: "ion.vision_failed", code: Number.isInteger(erro?.code) ? erro.code : undefined }));
       if (/(?:quota|daily limit|neurons|rate limit)/i.test(String(erro?.message))) {
-        return json({ erro: "O Cloudflare limitou o uso do modelo. O ION continua no plano gratuito." }, 429);
+        return json({ erro: "O Cloudflare limitou o uso do modelo. O Aion continua no plano gratuito." }, 429);
       }
       return json({ erro: "O Cloudflare não concluiu a análise da foto." }, 502);
     }
@@ -357,9 +357,9 @@ async function responderConversa(request, env) {
         ...(pedidoMusical ? { response_format: { type: "json_object" } } : {}),
         messages: [{
           role: "system",
-          content: "Você é o ION. Responda em português brasileiro e use o contexto da conversa. " + instrucaoMusical + instrucaoVideo + " "
+          content: "Você é o Aion. Responda em português brasileiro e use o contexto da conversa. " + instrucaoMusical + instrucaoVideo + " "
             + "Você pode explicar, analisar texto, elaborar roteiros e produzir código. Quando pedirem um programa ou arquivo de código, entregue o conteúdo completo em um bloco de código identificado pela linguagem, pronto para baixar no menu da resposta. "
-            + "A interface do ION pode ler respostas em voz alta. Quando perguntarem como ouvir uma resposta, indique o botão de alto-falante abaixo dela ou o comando \"Leia a última resposta\". Nunca afirme que a reprodução começou sem confirmação da interface. "
+            + "A interface do Aion pode ler respostas em voz alta. Quando perguntarem como ouvir uma resposta, indique o botão de alto-falante abaixo dela ou o comando \"Leia a última resposta\". Nunca afirme que a reprodução começou sem confirmação da interface. "
             + "Para manutenção automotiva, diferencie correia dentada, que sincroniza virabrequim e comando de válvulas, da correia de acessórios, que pode acionar o alternador. "
             + "Para marcas de sincronismo, torques e procedimentos específicos, só dê instruções fundamentadas em documentação técnica aplicável. Se ela não estiver disponível na conversa, peça modelo, ano, código do motor e o manual ou a página relevante. "
             + "Só confirme ações após receber o resultado do sistema. Um bloco de código produzido no chat pode ser baixado como texto, mas não foi executado. Se pedirem para instalar dependências ou executar testes de um projeto, informe que ainda não há executor conectado. Nunca invente logs, artefatos, links de download ou resultados de testes." + propostaExigida,
@@ -559,7 +559,7 @@ function loginPage(clientId) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#101827">
-<title>Ion</title>
+<title>Aion</title>
 <style>
   :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101827; color: #f3f6fc; }
   body { margin: 0; }
@@ -623,35 +623,35 @@ function loginPage(clientId) {
 </style>
 <main>
   <section id="entrada">
-  <h1>Validar acesso ao Ion</h1>
+  <h1>Validar acesso ao Aion</h1>
   <div id="google-login"></div>
   <p id="status" role="status">Entre com sua Conta Google.</p>
   </section>
   <section id="painel" hidden>
     <header class="ion-top">
       <button id="menu-ion" type="button" aria-label="Abrir histórico">☰</button>
-      <h1 id="titulo-painel" tabindex="-1">Ion</h1>
+      <h1 id="titulo-painel" tabindex="-1">Aion</h1>
       <button id="novo-ion" type="button">Nova conversa</button>
     </header>
     <dialog id="ion-menu" aria-labelledby="historico-titulo">
       <div class="ion-top"><h2 id="historico-titulo">Conversas</h2><button id="fechar-menu" type="button">Fechar</button></div>
       <ul id="historico-ion"></ul>
       <button id="limpar-ion" type="button">Limpar histórico local</button>
-      <details><summary>Áreas do Ion</summary><ul id="areas"></ul></details>
+      <details><summary>Áreas do Aion</summary><ul id="areas"></ul></details>
       <div id="preferencia-voz-ion" hidden>
         <label for="voz-leitura-ion">Voz do aparelho (opcional)</label>
         <select id="voz-leitura-ion"></select>
       </div>
       <button id="sair" type="button">Sair</button>
     </dialog>
-    <ul id="conversa-ion" role="log" aria-label="Conversa com o Ion"></ul>
+    <ul id="conversa-ion" role="log" aria-label="Conversa com o Aion"></ul>
     <form id="comando-ion">
 
 
       <div class="ion-compose">
         <button id="mais-ion" type="button" aria-label="Anexar câmera, fotos ou arquivos" aria-expanded="false" aria-controls="anexos-ion">+</button>
-        <label for="pedido-ion" class="ion-label">Mensagem para o Ion</label>
-        <textarea id="pedido-ion" rows="2" placeholder="Mensagem para o Ion" maxlength="500"></textarea>
+        <label for="pedido-ion" class="ion-label">Mensagem para o Aion</label>
+        <textarea id="pedido-ion" rows="2" placeholder="Mensagem para o Aion" maxlength="500"></textarea>
         <button id="voz-ion" type="button" aria-label="Iniciar ditado em português" aria-pressed="false">🎙</button>
         <button id="enviar-ion" type="submit">Enviar</button>
         <button id="cancelar-video" type="button" hidden>Parar</button>
@@ -901,7 +901,7 @@ function loginPage(clientId) {
       const item = document.createElement("li");
       item.className = who === "Você" ? "msg-user" : "msg-ion";
       const label = document.createElement("strong");
-      label.textContent = who;
+      label.textContent = who === "Ion" ? "Aion" : who;
       const body = document.createElement("p");
       body.textContent = content;
       item.append(label, body);
@@ -1097,7 +1097,7 @@ function loginPage(clientId) {
             const url = URL.createObjectURL(new Blob([codigo?.[2] ?? texto], { type: "text/plain;charset=utf-8" }));
             const link = document.createElement("a");
             link.href = url;
-            link.download = "ion-resposta." + extensao;
+            link.download = "aion-resposta." + extensao;
             item.append(link);
             link.click();
             link.remove();
@@ -1149,7 +1149,7 @@ function loginPage(clientId) {
       audio.src = url;
       const baixar = document.createElement("a");
       baixar.href = url;
-      baixar.download = "ion-audio-v" + versao + ".wav";
+      baixar.download = "aion-audio-v" + versao + ".wav";
       baixar.textContent = "Baixar áudio · versão " + versao;
       item.append(audio, baixar);
     }
@@ -1180,7 +1180,7 @@ function loginPage(clientId) {
       const url = URL.createObjectURL(new Blob([textoRoteiro(roteiro)], { type: "text/plain;charset=utf-8" }));
       videoUrls.push(url);
       baixar.href = url;
-      baixar.download = "ion-roteiro.txt";
+      baixar.download = "aion-roteiro.txt";
       baixar.textContent = "Baixar roteiro";
       item.append(baixar);
     }
@@ -1281,7 +1281,7 @@ function loginPage(clientId) {
             video.src = url;
             const baixar = document.createElement("a");
             baixar.href = url;
-            baixar.download = "ion-previa." + extension;
+            baixar.download = "aion-previa." + extension;
             baixar.textContent = "Baixar prévia do vídeo";
             item.append(video, baixar);
             update("Prévia com os textos das cenas · " + segundos + " segundos, sem narração. O roteiro inclui a descrição visual e as falas da produção.");
@@ -1315,13 +1315,13 @@ function loginPage(clientId) {
         return;
       }
       if (!file && /^(?:baixar|baixe|quero baixar) (?:o )?(?:codigo(?: fonte)?|projeto|repositorio) (?:do ion|do aion|do adl midia|adl midia)$/.test(command)) {
-        const codigo = areas.find(area => area.rotulo === "Baixar código do Ion");
+        const codigo = areas.find(area => area.rotulo === "Baixar código do Aion");
         if (codigo?.url) {
           const link = document.createElement("a");
           link.href = codigo.url;
           link.textContent = codigo.rotulo;
           item.append(link);
-          update("Aqui está a cópia ZIP do código que o Ion usa. Você também pode baixá-la no menu, em Áreas do Ion.");
+          update("Aqui está a cópia ZIP do código que o Aion usa. Você também pode baixá-la no menu, em Áreas do Aion.");
           return;
         }
       }
@@ -1496,7 +1496,7 @@ function loginPage(clientId) {
           log.scrollTop = log.scrollHeight;
         } catch (erro) {
           update(erro?.code === 1
-            ? "Permita a localização para o ION nas configurações do navegador e tente novamente."
+            ? "Permita a localização para o Aion nas configurações do navegador e tente novamente."
             : "O celular não conseguiu determinar a localização agora. Confira se a localização do aparelho está ligada.");
         } finally {
           send.disabled = microphone.disabled = false;
@@ -1727,7 +1727,7 @@ function loginPage(clientId) {
         preview.src = url;
         const download = document.createElement("a");
         download.href = url;
-        download.download = (title === "Trânsito seguro" ? "ion-transito-seguro." : scenes.length ? "ion-meu-video." : "ion-a-coragem-de-recomecar.") + extension;
+        download.download = (title === "Trânsito seguro" ? "aion-transito-seguro." : scenes.length ? "aion-meu-video." : "aion-a-coragem-de-recomecar.") + extension;
         download.textContent = "Baixar vídeo";
         update(title
           + " · " + sceneCount + (sceneCount === 1 ? " cena, " : " cenas, ")
@@ -1749,7 +1749,7 @@ function loginPage(clientId) {
     canvas.width = 540;
     canvas.height = 960;
     if (!window.MediaRecorder || !canvas.captureStream) {
-      throw new Error("Abra o Ion no Safari ou no Chrome atualizado.");
+      throw new Error("Abra o Aion no Safari ou no Chrome atualizado.");
     }
     const mime = ["video/mp4;codecs=avc1.42E01E", "video/mp4", "video/webm;codecs=vp8", "video/webm"]
       .find(type => MediaRecorder.isTypeSupported(type));
@@ -1900,7 +1900,7 @@ function loginPage(clientId) {
             : result.status === 503 ? "Serviço de validação indisponível ou configuração incompleta (503)."
             : "Falha na validação. Código HTTP: " + result.status + ".";
         } catch {
-          status.textContent = "Não foi possível conectar ao Ion.";
+          status.textContent = "Não foi possível conectar ao Aion.";
         }
       },
     });
