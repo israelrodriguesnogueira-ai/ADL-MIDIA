@@ -958,7 +958,7 @@ function loginPage(clientId) {
           const result = event.results[index];
           const transcript = result.isFinal && result[0]?.transcript.trim();
           if (!transcript) continue;
-          const separator = input.value && !/\s$/.test(input.value) ? " " : "";
+          const separator = input.value && input.value === input.value.trimEnd() ? " " : "";
           input.value = (input.value + separator + transcript).slice(0, input.maxLength);
           input.dispatchEvent(new Event("input", { bubbles: true }));
         }
