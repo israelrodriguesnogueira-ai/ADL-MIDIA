@@ -650,7 +650,7 @@ function loginPage(clientId) {
         <button id="mais-ion" type="button" aria-label="Anexar câmera, fotos ou arquivos" aria-expanded="false" aria-controls="anexos-ion">+</button>
         <label for="pedido-ion" class="ion-label">Mensagem para o Aion</label>
         <textarea id="pedido-ion" rows="2" placeholder="Mensagem para o Aion" maxlength="500"></textarea>
-        <button id="voz-ion" type="button" aria-label="Iniciar ditado em português" aria-pressed="false">🎙</button>
+        <button id="voz-ion" type="button" aria-label="Iniciar ditado em português" title="Ditar uma mensagem de texto" aria-pressed="false">🎙</button>
         <button id="enviar-ion" type="submit">Enviar</button>
         <button id="cancelar-video" type="button" hidden>Parar</button>
       </div>
@@ -658,10 +658,13 @@ function loginPage(clientId) {
         <button id="escolher-camera" type="button">Câmera</button>
         <button id="escolher-foto" type="button">Fotos</button>
         <button id="escolher-arquivo" type="button">Arquivos</button>
+        <button id="escolher-audio" type="button">Áudio</button>
+        <button id="gravar-audio" type="button" aria-pressed="false">Gravar áudio</button>
       </div>
       <input type="file" id="camera-ion" accept="image/*" capture="environment" hidden>
       <input type="file" id="foto-ion" accept="image/*" hidden>
       <input type="file" id="arquivo-ion" accept="image/*,audio/*,.m4a,.mp3,.wav,.ogg,.webm,.txt,text/plain" hidden>
+      <input type="file" id="audio-ion" accept="audio/*,.m4a,.mp3,.wav,.ogg,.opus,.webm,.aac,.flac,.amr,.3ga" hidden>
       <p id="anexo-status" role="status"></p>
       <p id="ajuda-ion" role="status"></p>
     </form>
@@ -780,25 +783,105 @@ function loginPage(clientId) {
 
     const attach = get("mais-ion");
     const attachments = get("anexos-ion");
+    const audioPicker = get("audio-ion");
+    const recordAudio = get("gravar-audio");
+    let audioRecorder;
+    let audioTimer;
+
+    function attachAudio(file) {
+      if (file.size === 0 || file.size > 20_000_000) {
+        help.textContent = "Escolha um áudio com conteúdo e de até 20 MB.";
+        return;
+      }
+      attachment = textFile = null;
+      audioFile = file;
+      attachmentStatus.textContent = "Áudio pronto para enviar: " + file.name;
+      help.textContent = "";
+      attachments.hidden = true;
+      attach.setAttribute("aria-expanded", "false");
+      remove.hidden = false;
+    }
+
+    get("escolher-audio").onclick = () => {
+      if (!send.disabled) audioPicker.click();
+    };
+    audioPicker.onchange = () => {
+      const file = audioPicker.files[0];
+      audioPicker.value = "";
+      if (file && !send.disabled) attachAudio(file);
+    };
+
+    recordAudio.onclick = async () => {
+      if (audioRecorder?.state === "recording") {
+        audioRecorder.stop();
+        return;
+      }
+      if (send.disabled) return;
+      if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+        help.textContent = "Este navegador não pode gravar aqui. Use +, Áudio para anexar uma gravação.";
+        return;
+      }
+      send.disabled = microphone.disabled = recordAudio.disabled = true;
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const recorder = new MediaRecorder(stream);
+        const chunks = [];
+        function finish() {
+          clearTimeout(audioTimer);
+          stream.getTracks().forEach(track => track.stop());
+          audioRecorder = undefined;
+          recordAudio.textContent = "Gravar áudio";
+          recordAudio.setAttribute("aria-pressed", "false");
+          send.disabled = microphone.disabled = recordAudio.disabled = false;
+        }
+        recorder.ondataavailable = event => {
+          if (event.data.size) chunks.push(event.data);
+        };
+        recorder.onerror = () => {
+          if (audioRecorder !== recorder) return;
+          finish();
+          help.textContent = "A gravação falhou. Tente novamente ou anexe um áudio.";
+        };
+        recorder.onstop = () => {
+          if (audioRecorder !== recorder) return;
+          finish();
+          const type = chunks[0]?.type || recorder.mimeType || "audio/webm";
+          const extension = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
+          attachAudio(new File(chunks, "gravacao." + extension, { type }));
+        };
+        recorder.start();
+        audioRecorder = recorder;
+        recordAudio.disabled = false;
+        recordAudio.textContent = "Parar gravação";
+        recordAudio.setAttribute("aria-pressed", "true");
+        help.textContent = "Gravando… toque em Parar gravação quando terminar.";
+        audioTimer = setTimeout(() => {
+          if (recorder.state === "recording") recorder.stop();
+        }, 119_000);
+      } catch {
+        stream?.getTracks().forEach(track => track.stop());
+        send.disabled = microphone.disabled = recordAudio.disabled = false;
+        help.textContent = "Não foi possível usar o microfone. Permita o acesso ou anexe um áudio.";
+      }
+    };
     attach.onclick = () => {
       attachments.hidden = !attachments.hidden;
       attach.setAttribute("aria-expanded", String(!attachments.hidden));
     };
     for (const [buttonId, inputId] of [["escolher-camera","camera-ion"],["escolher-foto","foto-ion"],["escolher-arquivo","arquivo-ion"]]) {
       const picker = get(inputId);
-      get(buttonId).onclick = () => picker.click();
+      get(buttonId).onclick = () => {
+        if (!send.disabled) picker.click();
+      };
       picker.onchange = async () => {
         const file = picker.files[0];
         picker.value = "";
         if (!file || send.disabled) return;
         attachments.hidden = true;
         attach.setAttribute("aria-expanded", "false");
-        if (inputId === "arquivo-ion" && (file.type.startsWith("audio/") || /\\.(?:m4a|mp3|wav|ogg|webm)$/i.test(file.name))
-            && file.size > 0 && file.size <= 20_000_000) {
-          attachment = textFile = null;
-          audioFile = file;
-          attachmentStatus.textContent = "Áudio escolhido: " + file.name;
-          remove.hidden = false;
+        if (inputId === "arquivo-ion" && (file.type.startsWith("audio/") || /\\.(?:m4a|mp3|wav|ogg|opus|webm|aac|flac|amr|3ga)$/i.test(file.name))) {
+          attachAudio(file);
           return;
         }
         if (file.type.startsWith("image/") && file.size <= 10_000_000) {
@@ -1232,7 +1315,14 @@ function loginPage(clientId) {
         const download = document.createElement("a");
         download.href = url;
         download.download = file.name;
-        download.textContent = attachment ? "Baixar foto" : "Baixar arquivo";
+        download.textContent = attachment ? "Baixar foto" : audioFile ? "Baixar áudio original" : "Baixar arquivo";
+        if (audioFile) {
+          const original = document.createElement("audio");
+          original.controls = true;
+          original.preload = "metadata";
+          original.src = url;
+          sent.append(original);
+        }
         sent.append(download);
         log.scrollTop = log.scrollHeight;
       }
@@ -1320,7 +1410,8 @@ function loginPage(clientId) {
           remove.click();
           update("Versão " + record.versaoAudio + " · Clareza e volume ajustados na sua gravação. Ouça e baixe o áudio nesta sessão.");
         } catch {
-          update("Não consegui tratar esse áudio. Tente um arquivo M4A, MP3 ou WAV compatível com seu navegador, com até dois minutos.");
+          remove.click();
+          update("O áudio original está anexado acima. Não consegui ajustar a gravação. Para tentar o ajuste, envie um M4A, MP3 ou WAV de até dois minutos.");
         } finally {
           send.disabled = microphone.disabled = false;
         }
