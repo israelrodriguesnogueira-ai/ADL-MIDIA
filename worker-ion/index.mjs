@@ -1,3 +1,4 @@
+import { paginaExecutor } from "./executor-javascript.mjs";
 import { caminhosSincronismo, scriptSincronismo } from "./catalogo-sincronismo.mjs";
 import { protectOwnerRoute } from "../integracoes/ion-controle-dono.mjs";
 
@@ -7,6 +8,7 @@ const LIMITE_PERGUNTA_FOTO_CODIFICADA = 6000;
 export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
+    if (path === "/executor-javascript" && request.method === "GET") return paginaExecutor();
     if (path === "/api/conversa") return responderConversa(request, env);
     if (path === "/api/foto") return analisarFoto(request, env);
     const bento = path === "/api/video/bento";
@@ -363,7 +365,7 @@ async function responderConversa(request, env) {
             + "A interface do Aion pode ler respostas em voz alta. Quando perguntarem como ouvir uma resposta, indique o botão de alto-falante abaixo dela ou o comando \"Leia a última resposta\". Nunca afirme que a reprodução começou sem confirmação da interface. "
             + "Para manutenção automotiva, diferencie correia dentada, que sincroniza virabrequim e comando de válvulas, da correia de acessórios, que pode acionar o alternador. "
             + "Para marcas de sincronismo, torques e procedimentos específicos, só dê instruções fundamentadas em documentação técnica aplicável. Se ela não estiver disponível na conversa, peça modelo, ano, código do motor e o manual ou a página relevante. "
-            + "Só confirme ações após receber o resultado do sistema. Um bloco de código produzido no chat pode ser baixado como texto, mas não foi executado. Se pedirem para instalar dependências ou executar testes de um projeto, informe que ainda não há executor conectado. Nunca invente logs, artefatos, links de download ou resultados de testes." + propostaExigida,
+            + "Só confirme ações após receber o resultado do sistema. Blocos marcados como javascript ou js podem ser executados pelo usuário no navegador com o botão Executar JavaScript. Quando pedirem código executável no chat, use JavaScript independente, sem bibliotecas ou rede, e mostre o resultado com console.log ou return. Se pedirem para instalar dependências ou executar testes de um projeto, informe que esse executor roda somente JavaScript local. Nunca invente logs, artefatos, links de download ou resultados de testes." + propostaExigida,
         }, ...mensagens.map(({ role, content }) => ({ role, content }))],
         max_tokens: trabalhoVideo ? 2200 : 768,
       });
@@ -1046,6 +1048,39 @@ function loginPage(clientId) {
       return /^(?:(?:voce )?(?:pode|poderia|consegue) )?(?:(?:leia|ler|reproduza|reproduzir|repita|repetir|fale|falar|diga|dizer)(?: em voz alta)? (?:a )?(?:ultima resposta|resposta anterior|essa resposta|esta resposta|(?:a )?resposta|isso|esse texto|este texto)(?: em voz alta)?|(?:leia|ler|repita|repetir|fale|falar|diga|dizer) em voz alta|(?:reproduza|reproduzir|toque|tocar) (?:o )?audio (?:da resposta|da ultima resposta|dessa resposta))$/.test(command);
     }
 
+    function codigoJavaScript(texto) {
+      return texto.match(/\`\`\`(?:javascript|js)[ \\t]*\\r?\\n([\\s\\S]*?)\\r?\\n\`\`\`/i)?.[1];
+    }
+
+    function executarJavaScript(codigo, botao, resultado) {
+      if (codigo.length > 12000) {
+        resultado.textContent = "O código pode ter até 12.000 caracteres.";
+        return;
+      }
+      const quadro = document.createElement("iframe");
+      quadro.hidden = true;
+      quadro.setAttribute("sandbox", "allow-scripts");
+      quadro.src = "/executor-javascript";
+      botao.disabled = true;
+      resultado.textContent = "Executando…";
+      const encerrar = texto => {
+        clearTimeout(prazo);
+        window.removeEventListener("message", receber);
+        quadro.remove();
+        resultado.textContent = texto;
+        botao.disabled = false;
+      };
+      const receber = evento => {
+        if (evento.source === quadro.contentWindow && evento.origin === "null" && typeof evento.data === "string") {
+          encerrar(evento.data);
+        }
+      };
+      const prazo = setTimeout(() => encerrar("O executor não respondeu a tempo."), 8000);
+      window.addEventListener("message", receber);
+      quadro.onload = () => quadro.contentWindow.postMessage(codigo, "*");
+      document.body.append(quadro);
+    }
+
     function message(who, content, entrada) {
       const item = document.createElement("li");
       item.className = who === "Você" ? "msg-user" : "msg-ion";
@@ -1154,7 +1189,7 @@ function loginPage(clientId) {
         leitoresPorResposta.set(entrada, () => reproduzir(Boolean(leitor && window.SpeechSynthesisUtterance)));
         ouvir.onclick = () => reproduzir();
       }
-      let acoes;
+      let acoes, executarCodigo;
       if (who === "Ion") {
         acoes = document.createElement("div");
         acoes.className = "ion-resposta-acoes";
@@ -1176,6 +1211,18 @@ function loginPage(clientId) {
             help.textContent = "Selecione o texto para copiar manualmente.";
           }
         }));
+        const resultadoCodigo = document.createElement("pre");
+        resultadoCodigo.hidden = true;
+        resultadoCodigo.style.whiteSpace = "pre-wrap";
+        resultadoCodigo.setAttribute("aria-live", "polite");
+        executarCodigo = botao("Executar JavaScript", "Executar o bloco JavaScript no navegador", () => {
+          const codigo = codigoJavaScript(body.textContent);
+          if (!codigo) return;
+          resultadoCodigo.hidden = false;
+          executarJavaScript(codigo, executarCodigo, resultadoCodigo);
+        });
+        executarCodigo.hidden = !codigoJavaScript(content);
+        acoes.append(executarCodigo);
         const grupoVotos = document.createElement("div");
         grupoVotos.className = "ion-resposta-votos";
         grupoVotos.setAttribute("role", "group");
@@ -1263,11 +1310,11 @@ function loginPage(clientId) {
           })
         );
         acoes.append(opcoes);
-        item.append(acoes);
+        item.append(acoes, resultadoCodigo);
       }
       log.append(item);
       log.scrollTop = log.scrollHeight;
-      return { item, body, ouvir, acoes };
+      return { item, body, ouvir, acoes, executarCodigo };
     }
 
     function parseCommand(request) {
@@ -1393,12 +1440,13 @@ function loginPage(clientId) {
       saveHistory();
       input.value = "";
       const record = {who: "Ion", text: ""};
-      const { item, body, ouvir, acoes } = message("Ion", "Entendendo seu pedido…", record);
+      const { item, body, ouvir, acoes, executarCodigo } = message("Ion", "Entendendo seu pedido…", record);
       current.push(record);
       const update = (reply) => {
         body.textContent = reply;
         if (ouvir) ouvir.hidden = !reply.trim();
         if (acoes) acoes.hidden = !reply.trim();
+        if (executarCodigo) executarCodigo.hidden = !codigoJavaScript(reply);
         record.text = reply;
         saveHistory();
       };
