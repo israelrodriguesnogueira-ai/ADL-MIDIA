@@ -259,6 +259,32 @@ async function tratarGravacao(file) {
   return codificarWav(amostras, taxa);
 }
 
+function duracaoSolicitada(texto) {
+  if (/\bmeia hora\b/i.test(texto)) return 1800;
+  const match = texto.match(/\b(\d{1,4})\s*(segundos?|minutos?)\b/i);
+  return match ? Number(match[1]) * (match[2].toLowerCase().startsWith("minuto") ? 60 : 1) : null;
+}
+
+function videoValido(p) {
+  return p && typeof p.titulo === "string" && p.titulo.trim() && p.titulo.length <= 100
+    && Array.isArray(p.cenas) && p.cenas.length >= 1 && p.cenas.length <= 16
+    && p.cenas.every(c => c && Number.isInteger(c.segundos) && c.segundos > 0 && c.segundos <= 3600
+      && typeof c.visual === "string" && c.visual.trim() && c.visual.length <= 500
+      && typeof c.fala === "string" && c.fala.length <= 500
+      && typeof c.legenda === "string" && c.legenda.trim() && c.legenda.length <= 100);
+}
+
+function textoRoteiro(p) {
+  let inicio = 0;
+  return p.titulo + "\n\n" + p.cenas.map((c, i) => {
+    const fim = inicio + c.segundos;
+    const linha = (i + 1) + ". " + inicio + "–" + fim + " s · " + c.legenda
+      + "\nCena: " + c.visual + (c.fala ? "\nFala ou narração: " + c.fala : "");
+    inicio = fim;
+    return linha;
+  }).join("\n\n");
+}
+
 async function responderConversa(request, env) {
   if (request.method !== "POST") return new Response(null, { status: 405, headers: { Allow: "POST" } });
   const ownerEmail = env.ION_OWNER_EMAIL?.trim().toLowerCase();
@@ -274,9 +300,9 @@ async function responderConversa(request, env) {
     resource: "ion",
   }, async () => {
     const body = await request.text();
-    if (body.length > 24000) return Response.json({ erro: "Mensagem muito longa." }, { status: 413 });
-    let mensagens, ultimaPartitura;
-    try { ({ mensagens, ultimaPartitura } = JSON.parse(body)); } catch {
+    if (body.length > 48000) return Response.json({ erro: "Mensagem muito longa." }, { status: 413 });
+    let mensagens, ultimaPartitura, ultimoVideo;
+    try { ({ mensagens, ultimaPartitura, ultimoVideo } = JSON.parse(body)); } catch {
       return Response.json({ erro: "Solicitação inválida." }, { status: 400 });
     }
     if (!Array.isArray(mensagens) || !mensagens.length || mensagens.length > 9
@@ -288,6 +314,9 @@ async function responderConversa(request, env) {
     if (ultimaPartitura != null && !partituraValida(ultimaPartitura)) {
       return Response.json({ erro: "A versão musical anterior é inválida." }, { status: 400 });
     }
+    if (ultimoVideo != null && !videoValido(ultimoVideo)) {
+      return Response.json({ erro: "O roteiro anterior é inválido." }, { status: 400 });
+    }
     const previsao = await consultarPrevisao(mensagens);
     if (previsao) return Response.json({ texto: previsao }, { headers: { "Cache-Control": "no-store" } });
     if (!env.ION_AI || env.ION_VISION_FREE_ENABLED !== "true") {
@@ -295,8 +324,19 @@ async function responderConversa(request, env) {
     }
     const pedido = mensagens.at(-1).content;
     const trabalhoMusical = ultimaPartitura || /\b(?:cantiga|can[çc][ãa]o|m[úu]sica|melodia|jingle)\b/i.test(pedido);
+    const trabalhoVideo = ultimoVideo || /\b(?:v[íi]deo|short|storyboard|roteiro)\b/i.test(pedido);
+    const duracao = duracaoSolicitada(pedido)
+      ?? (ultimoVideo ? ultimoVideo.cenas.reduce((total, cena) => total + cena.segundos, 0) : null);
+    const instrucaoVideo = trabalhoVideo
+      ? " Se o usuário pedir criação ou revisão de um vídeo ou roteiro de vídeo, proponha um roteiro no formato JSON puro: "
+        + "{\"acao\":\"roteiro_video\",\"titulo\":\"…\",\"cenas\":[{\"segundos\":3,\"visual\":\"O que se vê e o que acontece\",\"fala\":\"Fala ou narração\",\"legenda\":\"Texto curto na tela\"}]}. "
+        + "Adapte a linguagem à idade do público. Use até 16 cenas ou blocos, com 500 caracteres por campo de visual e fala e 100 para legenda. "
+        + "Para vídeos longos, descreva as ações e falas principais de cada bloco de modo que o roteiro possa ser expandido e produzido."
+        + (duracao != null ? " A soma exata das durações deve ser " + duracao + " segundos." : " Escolha uma duração adequada.")
+        + (ultimoVideo ? " Preserve as partes aprovadas e revise apenas o que foi pedido neste roteiro: " + JSON.stringify(ultimoVideo) : "")
+      : "";
     const instrucaoMusical = trabalhoMusical
-      ? " Quando o pedido for criar ou revisar uma cantiga, gere uma amostra instrumental real usando o motor da interface. "
+      ? " Quando o pedido for criar ou revisar uma cantiga, apresente uma proposta de letra, ritmo e melodia para aprovação antes de gerar o arquivo. "
         + "Responda somente com JSON: {\"acao\":\"melodia\",\"titulo\":\"…\",\"letra\":\"…\",\"bpm\":100,\"notas\":[[60,1],[62,1],[64,1],[60,1]]}. "
         + "Cada par é [nota MIDI 45 a 86 ou 0 para pausa, duração em tempos 0.25, 0.5, 1, 1.5 ou 2]. Use 8 a 24 notas, bpm entre 55 e 170 e letra original curta. "
         + "Em revisões, preserve o que o usuário não pediu para mudar. A amostra é instrumental e a letra aparece como texto. "
@@ -308,28 +348,36 @@ async function responderConversa(request, env) {
       const resposta = await env.ION_AI.run("@cf/meta/llama-3.1-8b-instruct-fast", {
         messages: [{
           role: "system",
-          content: "Você é o ION. Responda em português brasileiro e use o contexto da conversa. " + instrucaoMusical + " "
+          content: "Você é o ION. Responda em português brasileiro e use o contexto da conversa. " + instrucaoMusical + instrucaoVideo + " "
             + "Você pode explicar, analisar texto, elaborar roteiros e produzir código. Quando pedirem um programa ou arquivo de código, entregue o conteúdo completo em um bloco de código identificado pela linguagem, pronto para baixar no menu da resposta. "
             + "A interface do ION pode ler respostas em voz alta. Quando perguntarem como ouvir uma resposta, indique o botão de alto-falante abaixo dela ou o comando \"Leia a última resposta\". Nunca afirme que a reprodução começou sem confirmação da interface. "
             + "Para manutenção automotiva, diferencie correia dentada, que sincroniza virabrequim e comando de válvulas, da correia de acessórios, que pode acionar o alternador. "
             + "Para marcas de sincronismo, torques e procedimentos específicos, só dê instruções fundamentadas em documentação técnica aplicável. Se ela não estiver disponível na conversa, peça modelo, ano, código do motor e o manual ou a página relevante. "
             + "Só confirme ações após receber o resultado do sistema. Um bloco de código produzido no chat pode ser baixado como texto, mas não foi executado. Se pedirem para instalar dependências ou executar testes de um projeto, informe que ainda não há executor conectado. Nunca invente logs, artefatos, links de download ou resultados de testes.",
         }, ...mensagens.map(({ role, content }) => ({ role, content }))],
-        max_tokens: 768,
+        max_tokens: trabalhoVideo ? 2200 : 768,
       });
       const texto = resposta?.response;
       if (typeof texto !== "string" || !texto.trim() || texto.length > 12000) throw new Error();
       let producao = null;
-      if (trabalhoMusical) {
+      if (trabalhoMusical || trabalhoVideo) {
         try {
           producao = JSON.parse(texto.trim().replace(/^```(?:json)?\s*|\s*```$/gi, ""));
         } catch {}
       }
       const headers = { "Cache-Control": "no-store" };
-      if (producao?.acao === "pedir_gravacao") {
+      if (trabalhoVideo && producao?.acao === "roteiro_video") {
+        if (!videoValido(producao) || (duracao != null
+            && producao.cenas.reduce((total, cena) => total + cena.segundos, 0) !== duracao)) {
+          return Response.json({ erro: "O roteiro saiu incompleto ou com duração diferente. Peça para tentar de novo." }, { status: 502, headers });
+        }
+        const { titulo, cenas } = producao;
+        return Response.json({ roteiroVideo: { titulo, cenas } }, { headers });
+      }
+      if (trabalhoMusical && producao?.acao === "pedir_gravacao") {
         return Response.json({ pedirGravacao: true }, { headers });
       }
-      if (producao?.acao === "melodia") {
+      if (trabalhoMusical && producao?.acao === "melodia") {
         if (!partituraValida(producao)) {
           return Response.json({ erro: "A prévia musical saiu incompleta. Você pode pedir para eu tentar de novo." }, { status: 502, headers });
         }
@@ -606,6 +654,8 @@ function loginPage(clientId) {
   const caminhosSincronismo = ${JSON.stringify(caminhosSincronismo)};
   ${scriptSincronismo}
   ${partituraValida.toString()}
+  ${videoValido.toString()}
+  ${textoRoteiro.toString()}
   ${gerarMelodia.toString()}
   ${codificarWav.toString()}
   ${tratarGravacao.toString()}
@@ -668,7 +718,8 @@ function loginPage(clientId) {
       videoUrls.splice(0).forEach(url => URL.revokeObjectURL(url));
       for (const entry of chat) {
         const { item } = message(entry.who, entry.text, entry);
-        if (partituraValida(entry.partitura)) apresentarPartitura(item, entry);
+        if (partituraValida(entry.partitura) && entry.versaoAudio) apresentarPartitura(item, entry);
+        if (videoValido(entry.roteiroVideo)) apresentarRoteiro(item, entry.roteiroVideo);
         const gravacao = audiosDaSessao.get(entry);
         if (gravacao) apresentarAudio(item, gravacao, entry.versaoAudio);
       }
@@ -1080,6 +1131,16 @@ function loginPage(clientId) {
       item.append(audio, baixar);
     }
 
+    function apresentarRoteiro(item, roteiro) {
+      const baixar = document.createElement("a");
+      const url = URL.createObjectURL(new Blob([textoRoteiro(roteiro)], { type: "text/plain;charset=utf-8" }));
+      videoUrls.push(url);
+      baixar.href = url;
+      baixar.download = "ion-roteiro.txt";
+      baixar.textContent = "Baixar roteiro";
+      item.append(baixar);
+    }
+
     function apresentarPartitura(item, entrada) {
       const { amostras, taxa } = gerarMelodia(entrada.partitura);
       apresentarAudio(item, codificarWav(amostras, taxa), entrada.versaoAudio);
@@ -1133,6 +1194,63 @@ function loginPage(clientId) {
         saveHistory();
       };
       const versaoAnterior = current.findLast(entrada => Number.isInteger(entrada.versaoAudio))?.versaoAudio || 0;
+      const respostaAnteriorDoProjeto = current.at(-3);
+      const ultimaProposta = respostaAnteriorDoProjeto?.proposta
+        ? respostaAnteriorDoProjeto
+        : respostaAnteriorDoProjeto?.tentarProposta
+          ? current.slice(0, -2).findLast(entrada => entrada.proposta)
+          : null;
+      const aprovou = /^(?:aprovo|aprovado|pode executar|execute|pode (?:criar|gerar|produzir)|vai em frente)$/.test(command);
+      if (!file && aprovou && ultimaProposta) {
+        if (partituraValida(ultimaProposta.partitura)) {
+          record.partitura = ultimaProposta.partitura;
+          record.versaoAudio = versaoAnterior + 1;
+          apresentarPartitura(item, record);
+          update(record.partitura.titulo + " · Versão " + record.versaoAudio
+            + " (instrumental). Ouça e baixe abaixo.");
+          return;
+        }
+        const roteiro = ultimaProposta.roteiroVideo;
+        if (videoValido(roteiro)) {
+          record.roteiroVideo = roteiro;
+          apresentarRoteiro(item, roteiro);
+          const segundos = roteiro.cenas.reduce((total, cena) => total + cena.segundos, 0);
+          if (segundos > 60 || roteiro.cenas.length > 10) {
+            update("Roteiro aprovado · " + segundos + " segundos. O renderizador de prévias atende até 60 segundos e 10 cenas. Baixe o roteiro aprovado para seguir com a produção.");
+            return;
+          }
+          send.disabled = microphone.disabled = true;
+          recording = new AbortController();
+          cancelVideo.hidden = false;
+          body.textContent = "Gerando a prévia com os textos do roteiro…";
+          try {
+            const { blob, extension } = await renderSample(roteiro.cenas.map(cena => cena.legenda),
+              progress => { body.textContent = "Gerando a prévia… " + progress + "%"; },
+              null, recording.signal, roteiro.cenas.map(cena => cena.segundos * 1000));
+            const url = URL.createObjectURL(blob);
+            videoUrls.push(url);
+            const video = document.createElement("video");
+            video.controls = video.playsInline = true;
+            video.preload = "metadata";
+            video.src = url;
+            const baixar = document.createElement("a");
+            baixar.href = url;
+            baixar.download = "ion-previa." + extension;
+            baixar.textContent = "Baixar prévia do vídeo";
+            item.append(video, baixar);
+            update("Prévia com os textos das cenas · " + segundos + " segundos, sem narração. O roteiro inclui a descrição visual e as falas da produção.");
+          } catch (error) {
+            record.tentarProposta = true;
+            update((recording.signal.aborted ? "Prévia cancelada." : "A prévia falhou. " + error.message)
+              + " O roteiro está abaixo. Diga “pode executar” para tentar novamente.");
+          } finally {
+            recording = undefined;
+            cancelVideo.hidden = true;
+            send.disabled = microphone.disabled = false;
+          }
+          return;
+        }
+      }
       if (audioFile) {
         send.disabled = microphone.disabled = true;
         try {
@@ -1433,7 +1551,10 @@ function loginPage(clientId) {
         log.scrollTop = log.scrollHeight;
         return;
       }
-      if (!videoRequest && !trafficRequest && !bentoRequest) {
+      const projetoDeVideo = !file && (
+        /\\b(?:crie|cria|criar|faca|faz|fazer|gere|gera|gerar|produza|produzir|quero|monte|planeje|anim[eia])\\b.*\\b(?:video|short|roteiro|animacao)\\b/.test(command)
+        || videoValido(respostaAnteriorDoProjeto?.roteiroVideo));
+      if (projetoDeVideo || (!videoRequest && !trafficRequest && !bentoRequest)) {
         const mensagens = current.slice(0, -1).filter(entry =>
           ["Você", "Ion"].includes(entry.who) && entry.text.trim()).slice(-9).map(entry => ({
           role: entry.who === "Você" ? "user" : "assistant",
@@ -1442,18 +1563,27 @@ function loginPage(clientId) {
         send.disabled = microphone.disabled = true;
         try {
           const ultimaPartitura = current.findLast(entrada => partituraValida(entrada.partitura))?.partitura;
+          const ultimoVideo = current.findLast(entrada => videoValido(entrada.roteiroVideo))?.roteiroVideo;
           const response = await fetch("/api/conversa", {
             method: "POST",
             headers: { Authorization: "Bearer " + credential, "Content-Type": "application/json" },
-            body: JSON.stringify({ mensagens, ultimaPartitura }),
+            body: JSON.stringify({ mensagens, ultimaPartitura, ultimoVideo }),
           });
           const payload = await response.json();
           if (response.ok && partituraValida(payload.partitura)) {
             record.partitura = payload.partitura;
-            record.versaoAudio = versaoAnterior + 1;
-            apresentarPartitura(item, record);
-            update(record.partitura.titulo + " · Versão " + record.versaoAudio + " (prévia instrumental)"
-              + (record.partitura.letra ? "\\n\\n" + record.partitura.letra : ""));
+            record.proposta = true;
+            const duracao = Math.round(record.partitura.notas.reduce((total, nota) => total + nota[1], 0) * 60 / record.partitura.bpm);
+            update(record.partitura.titulo + " · Proposta de melodia instrumental"
+              + "\\nRitmo: " + record.partitura.bpm + " BPM · Duração: " + duracao + " s"
+              + (record.partitura.letra ? "\\n\\n" + record.partitura.letra : "")
+              + "\\n\\nPeça um ajuste ou diga “pode executar” para gerar o áudio.");
+          } else if (response.ok && videoValido(payload.roteiroVideo)) {
+            record.roteiroVideo = payload.roteiroVideo;
+            record.proposta = true;
+            apresentarRoteiro(item, record.roteiroVideo);
+            update(textoRoteiro(record.roteiroVideo)
+              + "\\n\\nPeça um ajuste ou diga “pode executar” para aprovar este roteiro.");
           } else if (response.ok && payload.pedirGravacao) {
             update("Grave você cantando ou falando a letra e envie pelo botão +, em Arquivo. Vou ajustar a clareza e o volume da sua gravação.");
           } else {
@@ -1565,7 +1695,7 @@ function loginPage(clientId) {
     };
   }
 
-  async function renderSample(customScenes, onProgress, photo, signal) {
+  async function renderSample(customScenes, onProgress, photo, signal, tempos) {
     const canvas = document.createElement("canvas");
     canvas.width = 540;
     canvas.height = 960;
@@ -1612,12 +1742,14 @@ function loginPage(clientId) {
       await new Promise((resolve, reject) => {
         recorder.onstop = resolve;
         recorder.onerror = () => reject(new Error("Falha na gravação."));
-        const duration = scenes.length * 3000;
+        let duration = 0;
+        const cortes = scenes.map((_, i) => (duration += tempos?.[i] ?? 3000));
         const start = performance.now();
         let lastProgress = -1;
         function draw() {
           const elapsed = Math.min(performance.now() - start, duration);
-          const index = Math.min(scenes.length - 1, Math.floor(elapsed / 3000));
+          const proximo = cortes.findIndex(corte => elapsed < corte);
+          const index = proximo < 0 ? scenes.length - 1 : proximo;
           const gradient = ctx.createLinearGradient(0, 0, 540, 960);
           gradient.addColorStop(0, ["#142b50", "#3a244e", "#193b44"][index % 3]);
           gradient.addColorStop(1, "#0b1429");
