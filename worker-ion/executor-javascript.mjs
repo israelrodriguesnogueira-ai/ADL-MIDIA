@@ -1,4 +1,4 @@
-function executarNoWorker() {
+const fonteWorker = String.raw`(() => {
   const publicar = self.postMessage.bind(self);
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
   const saida = [];
@@ -24,9 +24,9 @@ function executarNoWorker() {
       publicar([...saida, "Erro: " + String(erro).slice(0, 1000)].join("\n"));
     }
   }, { once: true });
-}
+})();`;
 
-function receberCodigo(fonteWorker) {
+const fontePagina = String.raw`(fonteWorker => {
   window.addEventListener("message", event => {
     if (event.source !== parent || typeof event.data !== "string" || event.data.length > 12000) return;
     const responder = texto => parent.postMessage(texto, "*");
@@ -52,12 +52,11 @@ function receberCodigo(fonteWorker) {
     worker.onerror = () => encerrar("O navegador não conseguiu executar o código.");
     worker.postMessage(event.data);
   }, { once: true });
-}
+})`;
 
 export function paginaExecutor() {
-  const fonteWorker = "(" + executarNoWorker.toString() + ")()";
-  return new Response("<!doctype html><meta charset=utf-8><script>(" + receberCodigo.toString()
-    + ")(" + JSON.stringify(fonteWorker) + ")</script>", {
+  return new Response("<!doctype html><meta charset=utf-8><script>" + fontePagina
+    + "(" + JSON.stringify(fonteWorker) + ");</script>", {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Content-Security-Policy": "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; worker-src blob:",
