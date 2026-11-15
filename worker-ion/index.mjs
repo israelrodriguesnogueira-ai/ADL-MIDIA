@@ -85,6 +85,7 @@ export default {
       ? Response.json({ areas: [
           { nome: "Central 6D", descricao: "Produção de vídeos", url: "https://adl-midia.israelrodriguesnogueira.workers.dev/" },
           { nome: "Shopee Gestão", descricao: "Conexão com a loja pendente" },
+          { nome: "Código-fonte do Ion", descricao: "Cópia ZIP da versão usada pelo Ion.", rotulo: "Baixar código do Ion", url: "https://codeload.github.com/israelrodriguesnogueira-ai/ADL-MIDIA/zip/refs/heads/ion/controle-dono" },
           { nome: "ADL Auto", descricao: "Integração pendente" },
         ] })
       : Response.json({ acesso: "proprietario", modo: "validacao" }));
@@ -205,7 +206,7 @@ async function responderConversa(request, env) {
             + "Você pode explicar, analisar texto, elaborar roteiros e produzir código. Quando pedirem um programa ou arquivo de código, entregue o conteúdo completo em um bloco de código identificado pela linguagem, pronto para baixar no menu da resposta. "
             + "Para manutenção automotiva, diferencie correia dentada, que sincroniza virabrequim e comando de válvulas, da correia de acessórios, que pode acionar o alternador. "
             + "Para marcas de sincronismo, torques e procedimentos específicos, só dê instruções fundamentadas em documentação técnica aplicável. Se ela não estiver disponível na conversa, peça modelo, ano, código do motor e o manual ou a página relevante. "
-            + "Não afirme ter criado arquivos, consultado fontes externas ou executado tarefas sem confirmação do sistema.",
+            + "Só confirme ações após receber o resultado do sistema. Um bloco de código produzido no chat pode ser baixado como texto, mas não foi executado. Se pedirem para instalar dependências ou executar testes de um projeto, informe que ainda não há executor conectado. Nunca invente logs, artefatos, links de download ou resultados de testes.",
         }, ...mensagens.map(({ role, content }) => ({ role, content }))],
         max_tokens: 768,
       });
@@ -953,6 +954,17 @@ function loginPage(clientId) {
         saveHistory();
       };
       let { command, videoRequest, trafficRequest, scriptParts } = parseCommand(request);
+      if (!file && /^(?:baixar|baixe|quero baixar) (?:o )?(?:codigo(?: fonte)?|projeto|repositorio) (?:do ion|do aion|do adl midia|adl midia)$/.test(command)) {
+        const codigo = areas.find(area => area.rotulo === "Baixar código do Ion");
+        if (codigo?.url) {
+          const link = document.createElement("a");
+          link.href = codigo.url;
+          link.textContent = codigo.rotulo;
+          item.append(link);
+          update("Aqui está a cópia ZIP do código que o Ion usa. Você também pode baixá-la no menu, em Áreas do Ion.");
+          return;
+        }
+      }
       const aviso = /\\b(?:avise|comunique|informe)\\s+(?:(?:com|ao|a|o|para o)\\s+)?cliente\\s+([\\p{L}][\\p{L} .'-]{0,60}?)\\s+que\\s+(?:o\\s+)?carro(?:\\s+del[ea])?\\s+(.+)$/iu.exec(request);
       let mensagem;
       if (aviso) {
@@ -1472,7 +1484,7 @@ function loginPage(clientId) {
       if (area.url) {
         const link = document.createElement("a");
         link.href = area.url;
-        link.textContent = "Abrir " + area.nome;
+        link.textContent = area.rotulo ?? "Abrir " + area.nome;
         item.append(link);
       }
       list.append(item);
