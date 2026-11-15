@@ -446,7 +446,7 @@ function loginPage(clientId) {
       <button id="limpar-ion" type="button">Limpar histórico local</button>
       <details><summary>Áreas do Ion</summary><ul id="areas"></ul></details>
       <div id="preferencia-voz-ion" hidden>
-        <label for="voz-leitura-ion">Voz para ler respostas</label>
+        <label for="voz-leitura-ion">Voz do aparelho (opcional)</label>
         <select id="voz-leitura-ion"></select>
       </div>
       <button id="sair" type="button">Sair</button>
@@ -651,7 +651,7 @@ function loginPage(clientId) {
     const preencherVozes = () => {
       const vozes = vozesBrasileiras();
       get("preferencia-voz-ion").hidden = false;
-      seletorVoz.replaceChildren(new Option("Faber (neural, português brasileiro)", ""), ...vozes.map(voz => new Option(voz.name, voz.voiceURI)));
+      seletorVoz.replaceChildren(new Option("Padrão do aparelho", ""), ...vozes.map(voz => new Option(voz.name, voz.voiceURI)));
       seletorVoz.value = vozes.some(voz => voz.voiceURI === vozSalva()) ? vozSalva() : "";
     };
     seletorVoz.onchange = () => {
@@ -688,7 +688,7 @@ function loginPage(clientId) {
         ouvir = document.createElement("button");
         ouvir.type = "button";
         ouvir.textContent = "🔊";
-        ouvir.title = "Ouvir resposta";
+        ouvir.title = "Ouvir com a voz Faber";
         ouvir.setAttribute("aria-label", "Ouvir resposta");
         ouvir.hidden = !content.trim() || content === "Entendendo seu pedido…";
         const reproduzir = async (usarVozLocal = false) => {
@@ -699,7 +699,7 @@ function loginPage(clientId) {
           if (!texto) return;
           const vozes = vozesBrasileiras();
           const preferida = vozes.find(v => v.voiceURI === vozSalva());
-          if (!preferida && !usarVozLocal) {
+          if (!usarVozLocal) {
             const sessao = { botao: ouvir };
             leitura = sessao;
             ouvir.textContent = "■";
