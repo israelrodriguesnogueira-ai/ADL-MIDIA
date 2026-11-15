@@ -1,6 +1,9 @@
 import { caminhosSincronismo, scriptSincronismo } from "./catalogo-sincronismo.mjs";
 import { protectOwnerRoute } from "../integracoes/ion-controle-dono.mjs";
 
+const LIMITE_TEXTO_CONVERSA = 2000;
+const LIMITE_PERGUNTA_FOTO_CODIFICADA = 6000;
+
 export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
@@ -113,7 +116,7 @@ async function analisarFoto(request, env) {
       return json({ erro: "A análise de fotos aguarda ativação no Cloudflare." }, 503);
     }
     const pergunta = request.headers.get("X-ION-Pergunta");
-    if (!pergunta || pergunta.length > 6000) return json({ erro: "Pergunta inválida." }, 400);
+    if (!pergunta || pergunta.length > LIMITE_PERGUNTA_FOTO_CODIFICADA) return json({ erro: "Pergunta inválida." }, 400);
     const tamanho = Number(request.headers.get("Content-Length"));
     if (tamanho > 2_000_000) return json({ erro: "Foto grande demais." }, 413);
     const image = new Uint8Array(await request.arrayBuffer());
@@ -305,7 +308,7 @@ async function responderConversa(request, env) {
     }
     if (!Array.isArray(mensagens) || !mensagens.length || mensagens.length > 9
         || mensagens.some(m => !m || !["user", "assistant"].includes(m.role)
-          || typeof m.content !== "string" || !m.content.trim() || m.content.length > 2000)
+          || typeof m.content !== "string" || !m.content.trim() || m.content.length > LIMITE_TEXTO_CONVERSA)
         || mensagens.at(-1).role !== "user") {
       return Response.json({ erro: "Histórico de conversa inválido." }, { status: 400 });
     }
@@ -586,10 +589,9 @@ function loginPage(clientId) {
   #pedido-ion { box-sizing: border-box; width: 100%; resize: vertical; }
   #painel:not([hidden]) { display: flex; flex-direction: column; min-height: 88dvh; }
   main:has(#painel:not([hidden])) { padding: .75rem 1rem 0; }
-  .ion-top, .ion-compose { display: flex; align-items: center; gap: .5rem; }
+  .ion-top, .ion-compose-actions { display: flex; align-items: center; gap: .5rem; }
   .ion-top h1 { flex: 1; margin: 0; font-size: 1.25rem; }
   .ion-top button, .ion-compose button, #ion-menu button, #anexos-ion button { border-radius: 999px; border: 1px solid #3b4b66; background: #19253a; color: #f3f6fc; }
-  .ion-compose textarea { flex: 1; min-width: 0; background: transparent; }
   #enviar-ion { padding: 0 .7rem; }
   #conversa-ion { flex: 1; max-height: 62dvh; }
   #comando-ion { position: sticky; bottom: 0; background: #101827; padding: .6rem 0 max(.6rem, env(safe-area-inset-bottom)); margin: 0; }
@@ -605,10 +607,11 @@ function loginPage(clientId) {
   #conversa-ion li { border: 0; background: transparent; padding: .75rem; }
   #conversa-ion .msg-user { justify-self: end; max-width: 88%; background: #243a55; }
   #comando-ion { position: static; flex-shrink: 0; }
-  .ion-compose { border: 1px solid #3b4b66; border-radius: 1.5rem; padding: .3rem; }
-  .ion-compose #pedido-ion { border: 0; resize: none; min-height: 44px; }
-  .ion-compose button { justify-content: center; padding: 0 .6rem; flex-shrink: 0; }
-  #enviar-ion { background: #a8d1ff; color: #101827; }
+  .ion-compose { display: grid; gap: .25rem; border: 1px solid #3b4b66; border-radius: 1.25rem; padding: .4rem; }
+  .ion-compose #pedido-ion { min-width: 0; min-height: 6.5rem; max-height: 16rem; max-height: clamp(6.5rem, 32dvh, 16rem); border: 0; resize: vertical; field-sizing: content; background: transparent; color: inherit; line-height: 1.4; }
+  .ion-compose-actions { flex-wrap: wrap; }
+  .ion-compose button { justify-content: center; min-width: 44px; padding: 0 .6rem; flex-shrink: 0; }
+  #enviar-ion { margin-inline-start: auto; background: #a8d1ff; color: #101827; }
   #cancelar-video { background: #8b3030; color: white; }
   button[hidden] { display: none; }
   .ion-resposta-acoes:not([hidden]) { display: flex; gap: .25rem; flex-wrap: wrap; align-items: center; margin-top: .4rem; }
@@ -647,12 +650,14 @@ function loginPage(clientId) {
 
 
       <div class="ion-compose">
-        <button id="mais-ion" type="button" aria-label="Anexar câmera, fotos ou arquivos" aria-expanded="false" aria-controls="anexos-ion">+</button>
         <label for="pedido-ion" class="ion-label">Mensagem para o Aion</label>
-        <textarea id="pedido-ion" rows="2" placeholder="Mensagem para o Aion" maxlength="500"></textarea>
-        <button id="voz-ion" type="button" aria-label="Iniciar ditado em português" title="Ditar uma mensagem de texto" aria-pressed="false">🎙</button>
-        <button id="enviar-ion" type="submit">Enviar</button>
-        <button id="cancelar-video" type="button" hidden>Parar</button>
+        <textarea id="pedido-ion" rows="4" placeholder="Mensagem para o Aion" maxlength="${LIMITE_TEXTO_CONVERSA}"></textarea>
+        <div class="ion-compose-actions">
+          <button id="mais-ion" type="button" aria-label="Anexar câmera, fotos ou arquivos" aria-expanded="false" aria-controls="anexos-ion">+</button>
+          <button id="voz-ion" type="button" aria-label="Iniciar ditado em português" title="Ditar uma mensagem de texto" aria-pressed="false">🎙</button>
+          <button id="cancelar-video" type="button" hidden>Parar</button>
+          <button id="enviar-ion" type="submit">Enviar</button>
+        </div>
       </div>
       <div id="anexos-ion" hidden>
         <button id="escolher-camera" type="button">Câmera</button>
@@ -927,7 +932,7 @@ function loginPage(clientId) {
         if (recognition !== session || send.disabled || !result?.isFinal) return;
         const transcript = result[0]?.transcript.trim();
         if (!transcript) return;
-        input.value = transcript.slice(0, 500);
+        input.value = transcript.slice(0, input.maxLength);
         help.textContent = "Texto reconhecido. Revise e toque em Enviar, ou dite novamente.";
         input.focus();
       };
@@ -1292,6 +1297,11 @@ function loginPage(clientId) {
       const file = attachment || textFile || audioFile;
       if (attachment) ultimaFotoPorConversa.set(current, attachment);
       if ((!request && !file) || send.disabled) return;
+      if (request.length > input.maxLength) {
+        help.textContent = "A mensagem pode ter até " + input.maxLength + " caracteres.";
+        input.focus();
+        return;
+      }
       let { command, videoRequest, trafficRequest, scriptParts } = parseCommand(request);
       if (!file && !scriptParts.length && pedidoDeLeitura(command)) {
         const ultimaResposta = findLastMessage(entry => entry.who === "Ion" && entry.text.trim());
@@ -1658,6 +1668,11 @@ function loginPage(clientId) {
           item.append(download);
           update("Aqui está a última foto enviada nesta conversa.");
         } else {
+          const perguntaFoto = encodeURIComponent(confirmaFoto ? "O que aparece nesta foto?" : request);
+          if (perguntaFoto.length > ${LIMITE_PERGUNTA_FOTO_CODIFICADA}) {
+            update("Esta pergunta é longa demais para uma foto. Envie uma pergunta mais curta.");
+            return;
+          }
           if (attachment) remove.click();
           send.disabled = microphone.disabled = true;
           body.textContent = "Analisando a foto…";
@@ -1686,7 +1701,7 @@ function loginPage(clientId) {
               method: "POST",
               headers: {
                 Authorization: "Bearer " + credential,
-                "X-ION-Pergunta": encodeURIComponent(confirmaFoto ? "O que aparece nesta foto?" : request),
+                "X-ION-Pergunta": perguntaFoto,
               },
               body: jpeg,
             });
@@ -1708,7 +1723,7 @@ function loginPage(clientId) {
         const mensagens = current.slice(0, -1).filter(entry =>
           ["Você", "Ion"].includes(entry.who) && entry.text.trim()).slice(-9).map(entry => ({
           role: entry.who === "Você" ? "user" : "assistant",
-          content: entry.text.slice(0, 2000),
+          content: entry.text.slice(0, ${LIMITE_TEXTO_CONVERSA}),
         }));
         send.disabled = microphone.disabled = true;
         try {
