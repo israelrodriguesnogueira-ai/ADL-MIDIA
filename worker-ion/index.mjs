@@ -340,13 +340,16 @@ async function responderConversa(request, env) {
         + (ultimoVideo ? " Preserve as partes aprovadas e revise apenas o que foi pedido neste roteiro: " + JSON.stringify(ultimoVideo) : "")
       : "";
     const instrucaoMusical = trabalhoMusical
-      ? " Quando o pedido for criar ou revisar uma cantiga, apresente uma proposta de letra, ritmo e melodia para aprovação antes de gerar o arquivo. "
-        + "Responda somente com JSON: {\"acao\":\"melodia\",\"titulo\":\"…\",\"letra\":\"…\",\"bpm\":100,\"notas\":[[60,1],[62,1],[64,1],[60,1]]}. "
+      ? " Quando o pedido for criar ou revisar um jingle, uma música, uma cantiga, uma canção ou uma melodia, devolva a partitura estruturada abaixo. Inclua o título, a letra, o ritmo e as notas. A interface mostra a proposta e espera pela aprovação. "
+        + "Responda somente com JSON: {\"acao\":\"melodia\",\"titulo\":\"…\",\"letra\":\"…\",\"bpm\":100,\"notas\":[[60,1],[62,1],[64,1],[67,1],[67,1],[64,1],[62,1],[60,2]]}. "
         + "Cada par é [nota MIDI 45 a 86 ou 0 para pausa, duração em tempos 0.25, 0.5, 1, 1.5 ou 2]. Use 8 a 24 notas, bpm entre 55 e 170 e letra original curta. "
         + "Em revisões, preserve o que o usuário não pediu para mudar. A amostra é instrumental e a letra aparece como texto. "
         + "Se pedirem voz cantada ou criticarem a voz e uma gravação própria permitir avançar, responda somente com {\"acao\":\"pedir_gravacao\"}. "
         + "Em perguntas sobre outro assunto ou em aprovações sem pedido de alteração, responda normalmente."
         + (ultimaPartitura ? " A última versão é " + JSON.stringify(ultimaPartitura) + "." : "")
+      : "";
+    const propostaExigida = precisaProposta && temaMusical && !temaVideo
+      ? " O pedido atual é de criação musical. Entregue a proposta executável no formato JSON acima, sem introdução, sem instruções para o usuário e sem perguntar se deve começar."
       : "";
     try {
       const resposta = await env.ION_AI.run("@cf/meta/llama-3.1-8b-instruct-fast", {
@@ -357,17 +360,21 @@ async function responderConversa(request, env) {
             + "A interface do ION pode ler respostas em voz alta. Quando perguntarem como ouvir uma resposta, indique o botão de alto-falante abaixo dela ou o comando \"Leia a última resposta\". Nunca afirme que a reprodução começou sem confirmação da interface. "
             + "Para manutenção automotiva, diferencie correia dentada, que sincroniza virabrequim e comando de válvulas, da correia de acessórios, que pode acionar o alternador. "
             + "Para marcas de sincronismo, torques e procedimentos específicos, só dê instruções fundamentadas em documentação técnica aplicável. Se ela não estiver disponível na conversa, peça modelo, ano, código do motor e o manual ou a página relevante. "
-            + "Só confirme ações após receber o resultado do sistema. Um bloco de código produzido no chat pode ser baixado como texto, mas não foi executado. Se pedirem para instalar dependências ou executar testes de um projeto, informe que ainda não há executor conectado. Nunca invente logs, artefatos, links de download ou resultados de testes.",
+            + "Só confirme ações após receber o resultado do sistema. Um bloco de código produzido no chat pode ser baixado como texto, mas não foi executado. Se pedirem para instalar dependências ou executar testes de um projeto, informe que ainda não há executor conectado. Nunca invente logs, artefatos, links de download ou resultados de testes." + propostaExigida,
         }, ...mensagens.map(({ role, content }) => ({ role, content }))],
         max_tokens: trabalhoVideo ? 2200 : 768,
       });
       const texto = resposta?.response;
-      if (typeof texto !== "string" || !texto.trim() || texto.length > 12000) throw new Error();
+      const textoValido = typeof texto === "string" && texto.trim() && texto.length <= 12000;
       let producao = null;
       if (trabalhoMusical || trabalhoVideo) {
-        try {
-          producao = JSON.parse(texto.trim().replace(/^```(?:json)?\s*|\s*```$/gi, ""));
-        } catch {}
+        if (texto && typeof texto === "object" && !Array.isArray(texto)) {
+          producao = texto;
+        } else if (textoValido) {
+          try {
+            producao = JSON.parse(texto.trim().replace(/^```(?:json)?\s*|\s*```$/gi, ""));
+          } catch {}
+        }
       }
       const headers = { "Cache-Control": "no-store" };
       if (trabalhoVideo && producao?.acao === "roteiro_video") {
@@ -388,11 +395,15 @@ async function responderConversa(request, env) {
         const { titulo, letra, bpm, notas } = producao;
         return Response.json({ partitura: { titulo, letra, bpm, notas } }, { headers });
       }
+      if (!textoValido && !producao) throw new Error("invalid_response");
       if (precisaProposta) {
+        console.warn(JSON.stringify({ event: "ion.production_proposal_missing" }));
         return Response.json({ erro: "Não consegui montar uma proposta executável para esse pedido. Envie o pedido novamente para eu tentar de novo." }, { status: 502, headers });
       }
+      if (!textoValido) throw new Error("invalid_response");
       return Response.json({ texto }, { headers });
     } catch {
+      console.warn(JSON.stringify({ event: "ion.conversation_model_unavailable" }));
       return Response.json({ erro: "O núcleo de conversa está temporariamente indisponível." }, { status: 502 });
     }
   })(request);
