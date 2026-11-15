@@ -199,13 +199,11 @@ function gerarMelodia(p) {
 
 function codificarWav(amostras, taxa) {
   const dados = new DataView(new ArrayBuffer(44 + amostras.length * 2));
-  function escrever(offset, texto) {
-    for (let i = 0; i < texto.length; i++) dados.setUint8(offset + i, texto.charCodeAt(i));
-  }
-  escrever(0, "RIFF");
+  const bytes = new Uint8Array(dados.buffer);
+  const encoder = new TextEncoder();
+  bytes.set(encoder.encode("RIFF"), 0);
   dados.setUint32(4, dados.byteLength - 8, true);
-  escrever(8, "WAVE");
-  escrever(12, "fmt ");
+  bytes.set(encoder.encode("WAVEfmt "), 8);
   dados.setUint32(16, 16, true);
   dados.setUint16(20, 1, true);
   dados.setUint16(22, 1, true);
@@ -213,7 +211,7 @@ function codificarWav(amostras, taxa) {
   dados.setUint32(28, taxa * 2, true);
   dados.setUint16(32, 2, true);
   dados.setUint16(34, 16, true);
-  escrever(36, "data");
+  bytes.set(encoder.encode("data"), 36);
   dados.setUint32(40, amostras.length * 2, true);
   for (let i = 0; i < amostras.length; i++) {
     dados.setInt16(44 + i * 2, Math.round(Math.max(-1, Math.min(1, amostras[i])) * 32767), true);
@@ -721,6 +719,12 @@ function loginPage(clientId) {
       try { localStorage.setItem(storageKey, JSON.stringify(saved)); }
       catch { help.textContent = "O navegador não conseguiu salvar o histórico."; }
     }
+    function findLastMessage(predicate) {
+      for (let index = current.length - 1; index >= 0; index--) {
+        if (predicate(current[index])) return current[index];
+      }
+      return undefined;
+    }
     function openConversation(chat) {
       if (send.disabled) return;
       recognition?.abort();
@@ -738,9 +742,15 @@ function loginPage(clientId) {
       videoUrls.splice(0).forEach(url => URL.revokeObjectURL(url));
       for (const entry of chat) {
         const { item } = message(entry.who, entry.text, entry);
-        if (partituraValida(entry.partitura) && entry.versaoAudio) apresentarPartitura(item, entry);
+        if (partituraValida(entry.partitura) && entry.versaoAudio) {
+          try {
+            apresentarPartitura(item, entry);
+          } catch {
+            help.textContent = "Não foi possível reabrir o áudio salvo nesta conversa.";
+          }
+        }
         if (videoValido(entry.roteiroVideo)) apresentarRoteiro(item, entry.roteiroVideo);
-        if ((entry.proposta || entry.tentarProposta) && entry === chat.at(-1)) apresentarAprovacao(item, entry);
+        if ((entry.proposta || entry.tentarProposta) && entry === chat[chat.length - 1]) apresentarAprovacao(item, entry);
         const gravacao = audiosDaSessao.get(entry);
         if (gravacao) apresentarAudio(item, gravacao, entry.versaoAudio);
       }
@@ -858,7 +868,9 @@ function loginPage(clientId) {
       }
     };
 
-    const leitor = window.speechSynthesis;
+    let leitor;
+    try { leitor = window.speechSynthesis; } catch {}
+
     const seletorVoz = get("voz-leitura-ion");
     const chaveVoz = "ion-voz-leitura";
     const vozesBrasileiras = () => leitor?.getVoices().filter(voz => /^pt[-_]br$/i.test(voz.lang)) ?? [];
@@ -1161,7 +1173,7 @@ function loginPage(clientId) {
       executar.textContent = entrada.tentarProposta ? "Tentar novamente" : "Executar proposta";
       executar.onclick = () => {
         if (send.disabled) return;
-        if (current.at(-1) !== entrada) {
+        if (current[current.length - 1] !== entrada) {
           help.textContent = "Peça ao Ariel para reapresentar esta proposta antes de executar.";
           return;
         }
@@ -1199,7 +1211,7 @@ function loginPage(clientId) {
       if ((!request && !file) || send.disabled) return;
       let { command, videoRequest, trafficRequest, scriptParts } = parseCommand(request);
       if (!file && !scriptParts.length && pedidoDeLeitura(command)) {
-        const ultimaResposta = current.findLast(entry => entry.who === "Ion" && entry.text.trim());
+        const ultimaResposta = findLastMessage(entry => entry.who === "Ion" && entry.text.trim());
         const lerResposta = leitoresPorResposta.get(ultimaResposta);
         input.value = "";
         if (lerResposta) await lerResposta();
@@ -1237,8 +1249,8 @@ function loginPage(clientId) {
         record.text = reply;
         saveHistory();
       };
-      const versaoAnterior = current.findLast(entrada => Number.isInteger(entrada.versaoAudio))?.versaoAudio || 0;
-      const respostaAnteriorDoProjeto = current.at(-3);
+      const versaoAnterior = findLastMessage(entrada => Number.isInteger(entrada.versaoAudio))?.versaoAudio || 0;
+      const respostaAnteriorDoProjeto = current[current.length - 3];
       const ultimaProposta = respostaAnteriorDoProjeto?.proposta || respostaAnteriorDoProjeto?.tentarProposta
         ? respostaAnteriorDoProjeto
         : null;
@@ -1342,7 +1354,7 @@ function loginPage(clientId) {
           : "Seu carro estará pronto para retirada às " + horario[1] + "h" + (horario[2] || "") + ".");
       }
       const marcadorWhatsApp = "\\n\\nRascunho. Escolha o contato no WhatsApp e confirme o envio lá.";
-      const anteriorWhatsApp = current.at(-3);
+      const anteriorWhatsApp = current[current.length - 3];
       const telefoneInformado = request.match(/(?:^|\\s)(\\+55[\\s.-]*)?(\\(?[1-9]\\d\\)?)[\\s.-]*(9?\\d{4})[\\s.-]*(\\d{4})(?=$|[\\s.!?,;])/);
       const rascunhoAnterior = anteriorWhatsApp?.who === "Ion" && anteriorWhatsApp.text.endsWith(marcadorWhatsApp);
       if (!mensagem && telefoneInformado && rascunhoAnterior) {
@@ -1415,7 +1427,7 @@ function loginPage(clientId) {
         return;
       }
       const assuntoTecnico = /\\b(?:sincronismo|correia dentada|correia da entrada|corrente de distribuicao|ponto da correia|fasagem|marcas de montagem)\\b/;
-      const pedidoAnterior = current.at(-4)?.who === "Você" ? current.at(-4).text : "";
+      const pedidoAnterior = current[current.length - 4]?.who === "Você" ? current[current.length - 4].text : "";
       const comandoAnterior = parseCommand(pedidoAnterior).command;
       const pedeManual = /^(?:(?:manda|mande|envia|envie|mostra|mostre|abre|abra|quero|me manda|me mande)\\s+)?(?:o\\s+)?(?:manual|link|figura|desenho|esquema)(?:\\s+(?:tecnico|dele|desse motor|por favor))*$/.test(command);
       const continuaTecnico = pedeManual && assuntoTecnico.test(comandoAnterior);
@@ -1539,7 +1551,7 @@ function loginPage(clientId) {
         && /\\b(?:bento|cachorro)\\b/.test(command) && /\\bbola\\b/.test(command)
         && !/\\b(?:nao|sem|cancele)\\b/.test(command);
       const fotoAnterior = ultimaFotoPorConversa.get(current);
-      const respostaAnterior = current.at(-3);
+      const respostaAnterior = current[current.length - 3];
       const confirmaFoto = /^(?:sim|isso|isso mesmo|exato|exatamente|correto)$/.test(command)
         && respostaAnterior?.who === "Ion"
         && /(?:análise (?:visual|de fotos)|analisar a foto|modelo de visão)/i.test(respostaAnterior.text);
@@ -1609,8 +1621,8 @@ function loginPage(clientId) {
         }));
         send.disabled = microphone.disabled = true;
         try {
-          const ultimaPartitura = current.findLast(entrada => partituraValida(entrada.partitura))?.partitura;
-          const ultimoVideo = current.findLast(entrada => videoValido(entrada.roteiroVideo))?.roteiroVideo;
+          const ultimaPartitura = findLastMessage(entrada => partituraValida(entrada.partitura))?.partitura;
+          const ultimoVideo = findLastMessage(entrada => videoValido(entrada.roteiroVideo))?.roteiroVideo;
           const response = await fetch("/api/conversa", {
             method: "POST",
             headers: { Authorization: "Bearer " + credential, "Content-Type": "application/json" },
