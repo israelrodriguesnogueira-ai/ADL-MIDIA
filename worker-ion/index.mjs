@@ -204,6 +204,7 @@ async function responderConversa(request, env) {
           role: "system",
           content: "Você é o ION. Responda em português brasileiro e use o contexto da conversa. "
             + "Você pode explicar, analisar texto, elaborar roteiros e produzir código. Quando pedirem um programa ou arquivo de código, entregue o conteúdo completo em um bloco de código identificado pela linguagem, pronto para baixar no menu da resposta. "
+            + "A interface do ION pode ler respostas em voz alta. Quando perguntarem como ouvir uma resposta, indique o botão de alto-falante abaixo dela ou o comando \"Leia a última resposta\". Nunca afirme que a reprodução começou sem confirmação da interface. "
             + "Para manutenção automotiva, diferencie correia dentada, que sincroniza virabrequim e comando de válvulas, da correia de acessórios, que pode acionar o alternador. "
             + "Para marcas de sincronismo, torques e procedimentos específicos, só dê instruções fundamentadas em documentação técnica aplicável. Se ela não estiver disponível na conversa, peça modelo, ano, código do motor e o manual ou a página relevante. "
             + "Só confirme ações após receber o resultado do sistema. Um bloco de código produzido no chat pode ser baixado como texto, mas não foi executado. Se pedirem para instalar dependências ou executar testes de um projeto, informe que ainda não há executor conectado. Nunca invente logs, artefatos, links de download ou resultados de testes.",
@@ -661,6 +662,7 @@ function loginPage(clientId) {
     preencherVozes();
     leitor?.addEventListener?.("voiceschanged", preencherVozes);
 
+    const leitoresPorResposta = new WeakMap();
     let leitura;
     function pararLeitura() {
       if (!leitura) return;
@@ -674,6 +676,10 @@ function loginPage(clientId) {
         URL.revokeObjectURL(anterior.url);
       }
       if (anterior.fala) leitor.cancel();
+    }
+
+    function pedidoDeLeitura(command) {
+      return /^(?:(?:voce )?(?:pode|poderia|consegue) )?(?:(?:leia|ler|reproduza|reproduzir|repita|repetir|fale|falar|diga|dizer)(?: em voz alta)? (?:a )?(?:ultima resposta|resposta anterior|essa resposta|esta resposta|(?:a )?resposta|isso|esse texto|este texto)(?: em voz alta)?|(?:leia|ler|repita|repetir|fale|falar|diga|dizer) em voz alta|(?:reproduza|reproduzir|toque|tocar) (?:o )?audio (?:da resposta|da ultima resposta|dessa resposta))$/.test(command);
     }
 
     function message(who, content, entrada) {
@@ -778,8 +784,10 @@ function loginPage(clientId) {
             if (leitura?.fala === fala) help.textContent = "Não foi possível reproduzir a voz neste navegador.";
             encerrar();
           };
+          help.textContent = "";
           leitor.speak(fala);
         };
+        leitoresPorResposta.set(entrada, () => reproduzir(Boolean(leitor && window.SpeechSynthesisUtterance)));
         ouvir.onclick = () => reproduzir();
       }
       let acoes;
@@ -922,6 +930,15 @@ function loginPage(clientId) {
       const file = attachment || textFile;
       if (attachment) ultimaFotoPorConversa.set(current, attachment);
       if ((!request && !file) || send.disabled) return;
+      let { command, videoRequest, trafficRequest, scriptParts } = parseCommand(request);
+      if (!file && !scriptParts.length && pedidoDeLeitura(command)) {
+        const ultimaResposta = current.findLast(entry => entry.who === "Ion" && entry.text.trim());
+        const lerResposta = leitoresPorResposta.get(ultimaResposta);
+        input.value = "";
+        if (lerResposta) await lerResposta();
+        else help.textContent = "Ainda não há uma resposta para ler nesta conversa.";
+        return;
+      }
       const { item: sent } = message("Você", request || file.name);
       if (file) {
         const url = URL.createObjectURL(file);
@@ -953,7 +970,6 @@ function loginPage(clientId) {
         record.text = reply;
         saveHistory();
       };
-      let { command, videoRequest, trafficRequest, scriptParts } = parseCommand(request);
       if (!file && /^(?:baixar|baixe|quero baixar) (?:o )?(?:codigo(?: fonte)?|projeto|repositorio) (?:do ion|do aion|do adl midia|adl midia)$/.test(command)) {
         const codigo = areas.find(area => area.rotulo === "Baixar código do Ion");
         if (codigo?.url) {
