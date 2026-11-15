@@ -727,7 +727,7 @@ function loginPage(clientId) {
         const { item } = message(entry.who, entry.text, entry);
         if (partituraValida(entry.partitura) && entry.versaoAudio) apresentarPartitura(item, entry);
         if (videoValido(entry.roteiroVideo)) apresentarRoteiro(item, entry.roteiroVideo);
-        if (entry.proposta && entry === chat.at(-1)) apresentarAprovacao(item, entry);
+        if ((entry.proposta || entry.tentarProposta) && entry === chat.at(-1)) apresentarAprovacao(item, entry);
         const gravacao = audiosDaSessao.get(entry);
         if (gravacao) apresentarAudio(item, gravacao, entry.versaoAudio);
       }
@@ -1109,7 +1109,9 @@ function loginPage(clientId) {
     }
 
     function parseCommand(request) {
-      const [instruction, ...scriptParts] = request.split(":");
+      const [instruction, ...scriptParts] = request
+        .replace(/^(ion|i on|aion|ai on|ariel) *: */i, "$1 ")
+        .split(":");
       const command = instruction.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
         .toLowerCase().replace(/[.,!?]/g, " ").trim().replace(/\\s+/g, " ")
         .replace(/^(?:ion|i on|aion|ai on) /, "")
@@ -1143,7 +1145,7 @@ function loginPage(clientId) {
       const executar = document.createElement("button");
       executar.type = "button";
       executar.className = "ion-executar-proposta";
-      executar.textContent = "Executar proposta";
+      executar.textContent = entrada.tentarProposta ? "Tentar novamente" : "Executar proposta";
       executar.onclick = () => {
         if (send.disabled) return;
         if (current.at(-1) !== entrada) {
@@ -1224,12 +1226,10 @@ function loginPage(clientId) {
       };
       const versaoAnterior = current.findLast(entrada => Number.isInteger(entrada.versaoAudio))?.versaoAudio || 0;
       const respostaAnteriorDoProjeto = current.at(-3);
-      const ultimaProposta = respostaAnteriorDoProjeto?.proposta
+      const ultimaProposta = respostaAnteriorDoProjeto?.proposta || respostaAnteriorDoProjeto?.tentarProposta
         ? respostaAnteriorDoProjeto
-        : respostaAnteriorDoProjeto?.tentarProposta
-          ? current.slice(0, -2).findLast(entrada => entrada.proposta)
-          : null;
-      const aprovou = /^(?:(?:ok|sim|certo|beleza) )?(?:aprovo|aprovado|pode executar|execute|pode (?:criar|gerar|produzir|fazer)|vai em frente)(?: (?:isso|a proposta|o roteiro|o video|o jingle|a musica|o audio|agora))?$/.test(command.replace(/^ariel /, ""));
+        : null;
+      const aprovou = !scriptParts.length && /^(?:(?:ok|sim|certo|beleza) )?(?:aprovo|aprovado|pode executar|execute|pode (?:criar|gerar|produzir|fazer)|vai em frente)(?: (?:isso|a proposta|o roteiro|o video|o jingle|a musica|o audio|agora))?$/.test(command.replace(/^ariel /, ""));
       if (!file && aprovou && !ultimaProposta) {
         update("Ainda não tenho uma proposta executável nesta resposta. Peça ao Ariel para apresentar ou revisar a proposta. Quando estiver pronta, você verá o botão Executar proposta.");
         return;
@@ -1274,6 +1274,7 @@ function loginPage(clientId) {
             update("Prévia com os textos das cenas · " + segundos + " segundos, sem narração. O roteiro inclui a descrição visual e as falas da produção.");
           } catch (error) {
             record.tentarProposta = true;
+            apresentarAprovacao(item, record);
             update((recording.signal.aborted ? "Prévia cancelada." : "A prévia falhou. " + error.message)
               + " O roteiro está abaixo. Diga “pode executar” para tentar novamente.");
           } finally {
