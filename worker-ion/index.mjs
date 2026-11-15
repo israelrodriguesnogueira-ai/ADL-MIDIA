@@ -592,7 +592,7 @@ function loginPage(clientId) {
   return new Response(`<!doctype html>
 <html lang="pt-BR">
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101827">
 <title>Aion</title>
 <style>
@@ -635,7 +635,13 @@ function loginPage(clientId) {
   #historico-ion button { width: 100%; text-align: left; overflow-wrap: anywhere; }
   #anexos-ion:not([hidden]) { display: flex; gap: .5rem; flex-wrap: wrap; }
   .ion-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-  #painel:not([hidden]) { height: calc(100dvh - 1rem); min-height: 0; }
+  #painel:not([hidden]) { height: max(0px, calc(var(--ion-altura-visivel, 100dvh) - .75rem)); min-height: 0; }
+  #leitura-ion:not([hidden]) { display: flex; flex-shrink: 0; align-items: center; gap: .25rem; padding: .25rem; border-radius: 1rem; background: #19253a; }
+  #leitura-ion audio { flex: 1; min-width: 0; height: 44px; }
+  #leitura-ion button { justify-content: center; flex: 0 0 44px; padding: 0; border: 0; border-radius: .75rem; background: transparent; color: inherit; }
+  #leitura-status { flex: 1; margin: 0; padding: .25rem .5rem; font-size: .88rem; }
+  #comando-ion { padding-bottom: max(.6rem, env(safe-area-inset-bottom)); }
+  #anexo-status:empty, #ajuda-ion:empty { display: none; }
   .ion-top { padding: .35rem 0; flex-shrink: 0; }
   #conversa-ion { min-height: 0; max-height: none; align-content: start; overscroll-behavior: contain; }
   #conversa-ion li { border: 0; background: transparent; padding: .75rem; }
@@ -669,6 +675,12 @@ function loginPage(clientId) {
       <h1 id="titulo-painel" tabindex="-1">Aion</h1>
       <button id="novo-ion" type="button">Nova conversa</button>
     </header>
+    <section id="leitura-ion" aria-label="Leitura da resposta" hidden>
+      <p id="leitura-status" role="status"></p>
+      <button id="leitura-voltar" type="button" aria-label="Voltar 15 segundos" title="Voltar 15 segundos" hidden>−15</button>
+      <button id="leitura-avancar" type="button" aria-label="Avançar 15 segundos" title="Avançar 15 segundos" hidden>+15</button>
+      <button id="leitura-fechar" type="button" aria-label="Encerrar leitura" title="Encerrar leitura">×</button>
+    </section>
     <dialog id="ion-menu" aria-labelledby="historico-titulo">
       <div class="ion-top"><h2 id="historico-titulo">Conversas</h2><button id="fechar-menu" type="button">Fechar</button></div>
       <ul id="historico-ion"></ul>
@@ -743,6 +755,15 @@ function loginPage(clientId) {
     const history = get("historico-ion");
     const help = get("ajuda-ion");
     const attachmentStatus = get("anexo-status");
+    const viewport = window.visualViewport;
+    if (viewport) {
+      const ajustarAltura = () => {
+        if (viewport.scale !== 1) return;
+        get("painel").style.setProperty("--ion-altura-visivel", viewport.height + "px");
+      };
+      viewport.addEventListener("resize", ajustarAltura);
+      ajustarAltura();
+    }
     const storageKey = "ion-conversas-v1";
     let saved = [];
     try {
@@ -1092,11 +1113,29 @@ function loginPage(clientId) {
     leitor?.addEventListener?.("voiceschanged", preencherVozes);
 
     const leitoresPorResposta = new WeakMap();
+    const barraLeitura = get("leitura-ion");
+    const statusLeitura = get("leitura-status");
+    const voltarLeitura = get("leitura-voltar");
+    const avancarLeitura = get("leitura-avancar");
+    voltarLeitura.onclick = () => deslocarLeitura(-15);
+    avancarLeitura.onclick = () => deslocarLeitura(15);
+    get("leitura-fechar").onclick = pararLeitura;
     let leitura;
+    function deslocarLeitura(segundos) {
+      const audio = leitura?.audio;
+      if (!audio || !Number.isFinite(audio.duration)) return;
+      audio.currentTime = Math.max(0, Math.min(audio.duration, audio.currentTime + segundos));
+    }
+    function iniciarLeitura(mensagem) {
+      statusLeitura.textContent = mensagem;
+      statusLeitura.hidden = false;
+      barraLeitura.hidden = false;
+    }
     function pararLeitura() {
       if (!leitura) return;
       const anterior = leitura;
       leitura = null;
+      barraLeitura.hidden = voltarLeitura.hidden = avancarLeitura.hidden = true;
       anterior.botao.textContent = "🔊";
       anterior.botao.setAttribute("aria-label", "Ouvir resposta");
       if (anterior.audio) {
@@ -1173,7 +1212,7 @@ function loginPage(clientId) {
             leitura = sessao;
             ouvir.textContent = "■";
             ouvir.setAttribute("aria-label", "Parar leitura");
-            help.textContent = "Preparando voz Faber. Na primeira vez, o modelo precisa ser baixado.";
+            iniciarLeitura("Preparando a leitura…");
             let prazo;
             try {
               const preparar = async () => {
@@ -1181,7 +1220,7 @@ function loginPage(clientId) {
                 if (leitura !== sessao) return null;
                 return piper.predict({ text: texto, voiceId: "pt_BR-faber-medium" }, progresso => {
                   if (leitura === sessao && progresso.total > 0) {
-                    help.textContent = "Baixando voz Faber… " + Math.min(100, Math.round(progresso.loaded * 100 / progresso.total)) + "%";
+                    statusLeitura.textContent = "Baixando voz Faber… " + Math.min(100, Math.round(progresso.loaded * 100 / progresso.total)) + "%";
                   }
                 });
               };
@@ -1194,7 +1233,12 @@ function loginPage(clientId) {
               sessao.audio = audio;
               audio.controls = true;
               audio.src = sessao.url;
-              item.append(audio);
+              statusLeitura.hidden = true;
+              barraLeitura.insertBefore(audio, voltarLeitura);
+              audio.onloadedmetadata = () => {
+                if (leitura !== sessao) return;
+                voltarLeitura.hidden = avancarLeitura.hidden = !Number.isFinite(audio.duration);
+              };
               audio.onended = () => { if (leitura === sessao) pararLeitura(); };
               audio.onerror = () => {
                 if (leitura !== sessao) return;
@@ -1206,7 +1250,7 @@ function loginPage(clientId) {
                 await audio.play();
               } catch {
                 if (leitura !== sessao) return;
-                help.textContent = "Toque no controle de áudio abaixo da resposta para ouvir.";
+                help.textContent = "Toque em Reproduzir na barra de leitura.";
               }
             } catch {
               if (leitura !== sessao) return;
@@ -1233,13 +1277,12 @@ function loginPage(clientId) {
           fala.lang = "pt-BR";
           if (preferida) fala.voice = preferida;
           leitura = { fala, botao: ouvir };
+          iniciarLeitura("Lendo a resposta…");
           ouvir.textContent = "■";
           ouvir.setAttribute("aria-label", "Parar leitura");
           const encerrar = () => {
             if (leitura?.fala !== fala) return;
-            leitura = null;
-            ouvir.textContent = "🔊";
-            ouvir.setAttribute("aria-label", "Ouvir resposta");
+            pararLeitura();
           };
           fala.onend = encerrar;
           fala.onerror = evento => {
