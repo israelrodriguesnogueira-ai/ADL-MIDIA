@@ -25,16 +25,87 @@ function montarContextoDaConversa(conversa) {
 }
 const LIMITE_PERGUNTA_FOTO_CODIFICADA = 6000;
 
+const ETAPAS_MUDANCA = [
+  ["Preparar a alteração permitida", "Preparar a alteração"],
+  ["Validar a proposta", "Rodar os testes"],
+  ["Disponibilizar versão para revisão", "Disponibilizar a proposta"],
+];
+const API_GITHUB_AION = "https://api.github.com/repos/israelrodriguesnogueira-ai/ADL-MIDIA";
+const WORKFLOW_MUDANCA = "ion-preparar-mudanca.yml";
+
+async function statusMudanca(request, env, id) {
+  if (request.method !== "GET") return new Response(null, { status: 405, headers: { Allow: "GET" } });
+  const dono = env.ION_OWNER_EMAIL?.trim().toLowerCase();
+  const audiencia = env.ION_GOOGLE_CLIENT_ID?.trim();
+  if (!dono?.endsWith("@gmail.com") || !/^[a-z0-9-]+\.apps\.googleusercontent\.com$/.test(audiencia ?? "")) {
+    return Response.json({ erro: "Autenticação não configurada." }, { status: 503 });
+  }
+  return protectOwnerRoute({
+    owner: { issuer: GOOGLE_ISSUER, subject: dono },
+    verifySession: () => verifyGoogleIdentity(request, audiencia),
+    audit: ({ actor, ...event }) => console.warn(JSON.stringify(event)),
+    action: "acompanhar_mudanca_aion",
+    resource: "ion",
+  }, async () => {
+    const token = env.ION_GITHUB_ACTIONS_TOKEN;
+    if (!token) return Response.json({ erro: "Integração indisponível." }, { status: 503 });
+    const buscar = (rota, autenticar = true) => fetch(API_GITHUB_AION + rota, {
+      headers: {
+        ...(autenticar ? { Authorization: "Bearer " + token } : {}),
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "ION-Owner-Worker",
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+    try {
+      const [resposta, jobs] = await Promise.all([
+        buscar("/actions/runs/" + id),
+        buscar("/actions/runs/" + id + "/jobs"),
+      ]);
+      if (!resposta.ok || !jobs.ok) throw new Error("GitHub indisponível");
+      const execucao = await resposta.json();
+      if (execucao.path?.split("@")[0] !== ".github/workflows/" + WORKFLOW_MUDANCA) {
+        return Response.json({ erro: "Execução indisponível." }, { status: 404 });
+      }
+      const dadosJobs = await jobs.json();
+      const etapas = dadosJobs.jobs?.find(job => job.name === "proposta")?.steps ?? [];
+      let tentativaParaRevisao = null;
+      if (execucao.conclusion === "success" && Number.isSafeInteger(execucao.run_attempt) && execucao.run_attempt > 0) {
+        const branch = "aion/proposta-interface-" + id + "-" + execucao.run_attempt;
+        const ref = await buscar("/git/ref/heads/" + branch, false).catch(() => null);
+        if (ref?.ok) tentativaParaRevisao = execucao.run_attempt;
+      }
+      return Response.json({
+        concluida: execucao.status === "completed",
+        conclusao: execucao.conclusion,
+        etapas: ETAPAS_MUDANCA.map(([codigo, titulo]) => {
+          const etapa = etapas.find(passo => passo.name === codigo);
+          const status = etapa?.status === "completed"
+            ? (etapa.conclusion === "success" ? "concluída" : etapa.conclusion === "skipped" ? "não executada" : "interrompida")
+            : etapa?.status === "in_progress" ? "em andamento" : "aguardando";
+          return { titulo, status };
+        }),
+        tentativaParaRevisao,
+      }, { headers: { "Cache-Control": "no-store" } });
+    } catch {
+      return Response.json({ erro: "Status temporariamente indisponível." }, { status: 502 });
+    }
+  })(request);
+}
+
 export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
     if (path === "/executor-javascript" && request.method === "GET") return paginaExecutor();
     if (path === "/api/conversa") return responderConversa(request, env);
     if (path === "/api/foto") return analisarFoto(request, env);
+    const consultaMudanca = path.match(/^\/api\/mudancas\/leitura\/([1-9][0-9]{0,15})$/);
+    if (consultaMudanca) return statusMudanca(request, env, consultaMudanca[1]);
     const bento = path === "/api/video/bento";
     const prepararMudanca = path === "/api/mudancas/leitura";
     if (prepararMudanca || bento || path === "/api/video/transito") {
-      const workflow = prepararMudanca ? "ion-preparar-mudanca.yml" : bento ? "ion-animacao-bento.yml" : "ion-video-gratuito.yml";
+      const workflow = prepararMudanca ? WORKFLOW_MUDANCA : bento ? "ion-animacao-bento.yml" : "ion-video-gratuito.yml";
       if (request.method !== "POST") return new Response("Método indisponível.", { status: 405, headers: { Allow: "POST" } });
       const ownerEmail = env.ION_OWNER_EMAIL?.trim().toLowerCase();
       const audience = env.ION_GOOGLE_CLIENT_ID?.trim();
@@ -88,11 +159,13 @@ export default {
         } catch {
           return Response.json({ erro: "Não foi possível acionar a tarefa." }, { status: 502 });
         }
+        let idDaExecucao = null;
         let acompanhamento = "https://github.com/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/" + workflow;
         if (prepararMudanca && result.status === 200) {
           const execucao = await result.json().catch(() => null);
           if (Number.isSafeInteger(execucao?.workflow_run_id) && execucao.workflow_run_id > 0) {
-            acompanhamento = "https://github.com/israelrodriguesnogueira-ai/ADL-MIDIA/actions/runs/" + execucao.workflow_run_id;
+            idDaExecucao = execucao.workflow_run_id;
+            acompanhamento = "https://github.com/israelrodriguesnogueira-ai/ADL-MIDIA/actions/runs/" + idDaExecucao;
           }
         } else if (result.status !== 204) {
           console.warn(JSON.stringify({ event: "ion.workflow_dispatch_failed", workflow, status: result.status }));
@@ -104,6 +177,7 @@ export default {
             ? "Preparação solicitada. Confira os testes no resumo da execução."
             : "Workflow acionado. O MP4 ainda precisa ser gerado e validado.",
           acompanhamento,
+          ...(prepararMudanca ? { idDaExecucao } : {}),
         }, { status: 202 });
       });
       return ownerRoute(request);
@@ -1772,8 +1846,92 @@ function loginPage(clientId) {
         item.append(acoes, resultadoCodigo);
       }
       log.append(item);
+      if (entrada?.mudanca) {
+        linkDaMudanca(item, entrada);
+        acompanharMudanca(item, body, entrada, texto => {
+          body.textContent = entrada.text = texto;
+          if (ouvir) ouvir.hidden = false;
+          if (acoes) acoes.hidden = false;
+          saveHistory();
+        });
+      }
       log.scrollTop = log.scrollHeight;
       return { item, body, ouvir, acoes, executarCodigo };
+    }
+
+    const githubMudancas = "https://github.com/israelrodriguesnogueira-ai/ADL-MIDIA";
+    function linkDaMudanca(item, record) {
+      const progresso = record.mudanca;
+      if (!progresso) return;
+      let link = item.querySelector(".ion-link-mudanca");
+      if (!link) {
+        link = document.createElement("a");
+        link.className = "ion-link-mudanca";
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        item.append(link);
+      }
+      if (Number.isSafeInteger(progresso.id) && progresso.id > 0) {
+        const tentativa = progresso.tentativa;
+        if (Number.isSafeInteger(tentativa) && tentativa > 0) {
+          link.href = githubMudancas + "/compare/ion/controle-dono...aion/proposta-interface-" + progresso.id + "-" + tentativa + "?expand=1";
+          link.textContent = "Abrir proposta para revisão";
+        } else {
+          link.href = githubMudancas + "/actions/runs/" + progresso.id;
+          link.textContent = "Abrir execução no GitHub";
+        }
+      } else {
+        link.href = githubMudancas + "/actions/workflows/ion-preparar-mudanca.yml";
+        link.textContent = "Abrir execuções no GitHub";
+      }
+    }
+
+    async function acompanharMudanca(item, body, record, update) {
+      const progresso = record.mudanca;
+      if (!Number.isSafeInteger(progresso.id) || progresso.id <= 0 || progresso.concluida) return;
+      body.setAttribute("aria-live", "polite");
+      let falhas = 0;
+      for (let consulta = 0; consulta < 60 && item.isConnected; consulta++) {
+        try {
+          const resposta = await fetch("/api/mudancas/leitura/" + progresso.id, {
+            headers: { Authorization: "Bearer " + credential },
+            cache: "no-store",
+            signal: AbortSignal.timeout(10000),
+          });
+          if (!item.isConnected) return;
+          if (resposta.status === 401 || resposta.status === 403) {
+            update("A sessão expirou. Entre novamente para retomar o acompanhamento ou abra a execução no GitHub.");
+            return;
+          }
+          if (!resposta.ok) throw new Error();
+          const estado = await resposta.json();
+          if (!item.isConnected) return;
+          falhas = 0;
+          const etapas = estado.etapas.map(etapa => etapa.titulo + " · " + etapa.status).join("\\n");
+          if (estado.concluida) {
+            progresso.concluida = true;
+            progresso.tentativa = estado.tentativaParaRevisao;
+            const resumo = estado.conclusao !== "success"
+              ? "A execução terminou sem preparar a proposta. Abra a execução para ver o motivo."
+              : progresso.tentativa
+                ? "Proposta pronta para revisão. Sua aprovação no GitHub libera a publicação."
+                : "Execução concluída. Abra o resultado para conferir se já estava configurado.";
+            update(etapas + "\\n\\n" + resumo);
+            linkDaMudanca(item, record);
+            return;
+          }
+          if (record.text !== etapas) update(etapas);
+        } catch {
+          if (!item.isConnected) return;
+          falhas++;
+          if (falhas >= 3) {
+            update(record.text + "\\n\\nNão consegui atualizar as etapas. Abra a execução no GitHub ou reabra a conversa para retomar.");
+            return;
+          }
+        }
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+      if (item.isConnected) update(record.text + "\\n\\nA execução segue no GitHub. Abra o link para acompanhar.");
     }
 
     function parseCommand(request) {
@@ -1953,13 +2111,12 @@ function loginPage(clientId) {
             update(payload.erro || "O GitHub não aceitou a preparação.");
             return;
           }
-          update("Solicitei a preparação ao GitHub. Abra o link para conferir os testes e, se houver mudança, revisar a proposta no GitHub.");
-          const acompanhamento = document.createElement("a");
-          acompanhamento.href = payload.acompanhamento;
-          acompanhamento.textContent = "Acompanhar preparação no GitHub";
-          acompanhamento.target = "_blank";
-          acompanhamento.rel = "noopener noreferrer";
-          item.append(acompanhamento);
+          record.mudanca = { id: payload.idDaExecucao, concluida: false };
+          update(payload.idDaExecucao
+            ? "Pedido recebido pelo GitHub. Aguardando o início da preparação…"
+            : "Pedido recebido pelo GitHub. Abra o link para conferir a execução.");
+          linkDaMudanca(item, record);
+          acompanharMudanca(item, body, record, update);
           irParaUltimaMensagem();
         } catch {
           update("Falha de conexão ao solicitar a preparação.");
