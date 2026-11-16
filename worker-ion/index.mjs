@@ -1,3 +1,4 @@
+import { arquivosDoDono } from "./arquivos.mjs";
 import { paginaExecutor } from "./executor-javascript.mjs";
 import { caminhosSincronismo, scriptSincronismo } from "./catalogo-sincronismo.mjs";
 import { protectOwnerRoute } from "../integracoes/ion-controle-dono.mjs";
@@ -96,6 +97,27 @@ export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
     if (path === "/executor-javascript" && request.method === "GET") return paginaExecutor();
+    const arquivo = path.match(/^\/api\/arquivos(?:\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}))?$/);
+    if (arquivo) {
+      const ownerEmail = env.ION_OWNER_EMAIL?.trim().toLowerCase();
+      const audience = env.ION_GOOGLE_CLIENT_ID?.trim();
+      if (!ownerEmail?.endsWith("@gmail.com") || !/^[a-z0-9-]+\.apps\.googleusercontent\.com$/.test(audience ?? "")) {
+        return Response.json({ erro: "Autenticação não configurada." }, { status: 503 });
+      }
+      return protectOwnerRoute({
+        owner: { issuer: GOOGLE_ISSUER, subject: ownerEmail },
+        verifySession: () => verifyGoogleIdentity(request, audience),
+        audit: ({ actor, ...event }) => console.warn(JSON.stringify(event)),
+        action: arquivo[1] ? "abrir_video_privado" : "salvar_video_privado",
+        resource: "ion",
+      }, async () => {
+        try {
+          return await arquivosDoDono(request, env.ION_ARQUIVOS, arquivo[1]);
+        } catch {
+          return Response.json({ erro: "Armazenamento privado temporariamente indisponível." }, { status: 502 });
+        }
+      })(request);
+    }
     if (path === "/api/conversa") return responderConversa(request, env);
     if (path === "/api/foto") return analisarFoto(request, env);
     const consultaMudanca = path.match(/^\/api\/mudancas\/leitura\/([1-9][0-9]{0,15})$/);
@@ -2042,7 +2064,22 @@ function loginPage(clientId) {
         baixar.href = url;
         baixar.download = "aion-clipe." + extension;
         baixar.textContent = "Baixar clipe";
-        item.append(video, baixar);
+        const salvar = document.createElement("button");
+        salvar.type = "button";
+        salvar.textContent = "Salvar link privado";
+        const estado = document.createElement("p");
+        estado.setAttribute("role", "status");
+        salvar.onclick = async () => {
+          salvar.disabled = true;
+          estado.textContent = "Salvando vídeo…";
+          try {
+            estado.replaceChildren(await salvarVideoPrivado(blob, credential));
+          } catch (error) {
+            estado.textContent = error.message;
+            salvar.disabled = false;
+          }
+        };
+        item.append(video, baixar, salvar, estado);
         update("Clipe de legendas " + (temNarracao ? "com narração Faber" : "sem narração")
           + " · " + segundos + " s · " + extension.toUpperCase() + ". Abra ou baixe o arquivo nesta sessão.");
       } catch (error) {
@@ -2836,10 +2873,88 @@ function loginPage(clientId) {
     }
   }
 
+  async function salvarVideoPrivado(blob, credential) {
+    const resposta = await fetch("/api/arquivos", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + credential, "Content-Type": blob.type },
+      body: blob,
+      signal: AbortSignal.timeout(30000),
+    });
+    const dados = await resposta.json();
+    if (!resposta.ok || typeof dados.caminho !== "string" || !dados.caminho.startsWith("/?arquivo=")) {
+      throw new Error(dados.erro || "Não consegui salvar o vídeo.");
+    }
+    const link = document.createElement("a");
+    link.href = dados.caminho;
+    link.textContent = "Abrir link privado";
+    return link;
+  }
+
   function showPanel(areas, credential) {
     document.getElementById("entrada").hidden = true;
     document.getElementById("painel").hidden = false;
     connectCommands(areas, credential);
+    const importacao = document.createElement("label");
+    importacao.textContent = "Guardar vídeo privado (MP4 ou WebM, até 8 MiB) ";
+    const arquivoLocal = document.createElement("input");
+    arquivoLocal.type = "file";
+    arquivoLocal.accept = "video/mp4,video/webm";
+    const upload = document.createElement("span");
+    upload.setAttribute("role", "status");
+    importacao.append(arquivoLocal, upload);
+    document.getElementById("painel").append(importacao);
+    arquivoLocal.onchange = async () => {
+      const [video] = arquivoLocal.files;
+      if (!video) return;
+      arquivoLocal.disabled = true;
+      upload.textContent = "Salvando vídeo…";
+      try {
+        upload.replaceChildren(await salvarVideoPrivado(video, credential));
+      } catch (error) {
+        upload.textContent = error.message;
+      } finally {
+        arquivoLocal.value = "";
+        arquivoLocal.disabled = false;
+      }
+    };
+    const arquivo = new URLSearchParams(location.search).get("arquivo");
+    if (/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(arquivo || "")) {
+      const secao = document.createElement("section");
+      secao.setAttribute("aria-label", "Vídeo privado");
+      const abrir = document.createElement("button");
+      abrir.type = "button";
+      abrir.textContent = "Carregar vídeo privado";
+      const estado = document.createElement("p");
+      estado.setAttribute("role", "status");
+      secao.append(abrir, estado);
+      document.getElementById("painel").prepend(secao);
+      abrir.onclick = async () => {
+        abrir.disabled = true;
+        estado.textContent = "Carregando…";
+        try {
+          const resposta = await fetch("/api/arquivos/" + arquivo, {
+            headers: { Authorization: "Bearer " + credential },
+            signal: AbortSignal.timeout(30000),
+          });
+          if (!resposta.ok) throw new Error((await resposta.json().catch(() => null))?.erro
+            || "Não foi possível abrir o vídeo.");
+          const dados = await resposta.blob();
+          const url = URL.createObjectURL(dados);
+          const player = document.createElement("video");
+          player.playsInline = player.controls = true;
+          player.src = url;
+          const download = document.createElement("a");
+          download.href = url;
+          download.download = dados.type === "video/mp4" ? "aion.mp4" : "aion.webm";
+          download.textContent = "Baixar vídeo";
+          estado.replaceChildren(player, download);
+        } catch (error) {
+          estado.textContent = error.message;
+          abrir.disabled = false;
+        }
+      };
+    }
+
     const list = document.getElementById("areas");
     list.replaceChildren();
     for (const area of areas) {

@@ -1,0 +1,34 @@
+name: Aion - demonstração de vídeo 3D
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  renderizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar Blender e FFmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends blender ffmpeg
+      - name: Renderizar e conferir vídeo vertical
+        run: |
+          set -euo pipefail
+          frames="$(mktemp -d)"
+          trap 'rm -rf "$frames"' EXIT
+          mkdir -p saida
+          blender -b -t 4 --python-exit-code 1 -P scripts/aion-video-3d.py -- --frames-dir "$frames"
+          ffmpeg -v error -framerate 12 -i "$frames/frame-%04d.png" -c:v libx264 -pix_fmt yuv420p -movflags +faststart saida/Aion-Vestido-3D.mp4
+          test "$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height,nb_frames -of csv=p=0 saida/Aion-Vestido-3D.mp4)" = "270,480,180"
+          ffmpeg -v error -xerror -i saida/Aion-Vestido-3D.mp4 -f null -
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aion-vestido-3d
+          path: saida/Aion-Vestido-3D.mp4
+          if-no-files-found: error
+          retention-days: 7
