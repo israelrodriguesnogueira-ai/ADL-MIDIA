@@ -1,3 +1,4 @@
+import { arquivosEmD1 } from "./arquivos-d1.mjs";
 import { arquivosDoDono, receberVideo3D, reservarVideo3D } from "./arquivos.mjs";
 import { paginaExecutor } from "./executor-javascript.mjs";
 import { caminhosSincronismo, scriptSincronismo } from "./catalogo-sincronismo.mjs";
@@ -97,9 +98,10 @@ export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
     if (path === "/executor-javascript" && request.method === "GET") return paginaExecutor();
+    const armazenamento = env.ION_VIDEOS_DB ? arquivosEmD1(env.ION_VIDEOS_DB) : undefined;
     const resultado3D = path.match(/^\/api\/video\/3d\/resultado\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/);
     if (resultado3D) {
-      try { return await receberVideo3D(request, env.ION_ARQUIVOS, resultado3D[1]); }
+      try { return await receberVideo3D(request, armazenamento, resultado3D[1]); }
       catch { return new Response(null, { status: 502 }); }
     }
     const arquivo = path.match(/^\/api\/arquivos(?:\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}))?$/);
@@ -117,7 +119,7 @@ export default {
         resource: "ion",
       }, async () => {
         try {
-          return await arquivosDoDono(request, env.ION_ARQUIVOS, arquivo[1]);
+          return await arquivosDoDono(request, armazenamento, arquivo[1]);
         } catch {
           return Response.json({ erro: "Armazenamento privado temporariamente indisponível." }, { status: 502 });
         }
@@ -150,11 +152,11 @@ export default {
         const dispatch = { ref: "main" };
         let pedido3D;
         if (video3D) {
-          if (env.ION_VIDEO_3D_FREE_ENABLED !== "true" || !env.ION_ARQUIVOS) {
+          if (env.ION_VIDEO_3D_FREE_ENABLED !== "true" || !armazenamento) {
             return Response.json({ erro: "O vídeo 3D aguarda ativação do workflow gratuito e do armazenamento privado." }, { status: 503 });
           }
           try {
-            pedido3D = await reservarVideo3D(env.ION_ARQUIVOS);
+            pedido3D = await reservarVideo3D(armazenamento);
           } catch {
             return Response.json({ erro: "Não foi possível reservar o arquivo privado." }, { status: 502 });
           }
@@ -2954,7 +2956,7 @@ function loginPage(clientId) {
     document.getElementById("painel").hidden = false;
     connectCommands(areas, credential);
     const importacao = document.createElement("label");
-    importacao.textContent = "Guardar vídeo privado (MP4 ou WebM, até 8 MiB) ";
+    importacao.textContent = "Guardar vídeo privado (MP4 ou WebM, até 1,5 MB) ";
     const arquivoLocal = document.createElement("input");
     arquivoLocal.type = "file";
     arquivoLocal.accept = "video/mp4,video/webm";

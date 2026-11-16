@@ -1,4 +1,4 @@
-const LIMITE_BYTES = 8 * 1024 * 1024;
+import { LIMITE_ARQUIVO_D1 } from "./arquivos-d1.mjs";
 const FORMATOS = new Map([["video/mp4", "mp4"], ["video/webm", "webm"]]);
 const headers = { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" };
 
@@ -29,8 +29,8 @@ export async function arquivosDoDono(request, bucket, id) {
 }
 
 async function lerVideo(request) {
-  if (Number(request.headers.get("Content-Length")) > LIMITE_BYTES) {
-    return Response.json({ erro: "O limite de armazenamento por vídeo é de 8 MiB." }, { status: 413, headers });
+  if (Number(request.headers.get("Content-Length")) > LIMITE_ARQUIVO_D1) {
+    return Response.json({ erro: "O limite de armazenamento por vídeo é de 1,5 MB." }, { status: 413, headers });
   }
   const leitor = request.body?.getReader();
   if (!leitor) return Response.json({ erro: "Arquivo vazio." }, { status: 400, headers });
@@ -40,9 +40,9 @@ async function lerVideo(request) {
     const { value, done } = await leitor.read();
     if (done) break;
     tamanho += value.byteLength;
-    if (tamanho > LIMITE_BYTES) {
+    if (tamanho > LIMITE_ARQUIVO_D1) {
       await leitor.cancel();
-      return Response.json({ erro: "O limite de armazenamento por vídeo é de 8 MiB." }, { status: 413, headers });
+      return Response.json({ erro: "O limite de armazenamento por vídeo é de 1,5 MB." }, { status: 413, headers });
     }
     partes.push(value);
   }
