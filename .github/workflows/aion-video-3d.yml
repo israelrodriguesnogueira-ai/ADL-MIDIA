@@ -1,0 +1,59 @@
+name: Aion - demonstração de vídeo 3D
+
+on:
+  workflow_dispatch:
+    inputs:
+      id:
+        description: Identificador do vídeo privado
+        required: false
+        type: string
+      token:
+        description: Credencial de upload desta renderização
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  renderizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar Blender e FFmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends blender ffmpeg
+      - name: Renderizar e conferir vídeo vertical
+        run: |
+          set -euo pipefail
+          frames="$(mktemp -d)"
+          trap 'rm -rf "$frames"' EXIT
+          mkdir -p saida
+          blender -b -t 4 --python-exit-code 1 -P scripts/aion-video-3d.py -- --frames-dir "$frames"
+          ffmpeg -v error -framerate 12 -i "$frames/frame-%04d.png" -c:v libx264 -pix_fmt yuv420p -movflags +faststart saida/Aion-Vestido-3D.mp4
+          test "$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height,nb_frames -of csv=p=0 saida/Aion-Vestido-3D.mp4)" = "270,480,180"
+          ffmpeg -v error -xerror -i saida/Aion-Vestido-3D.mp4 -f null -
+      - name: Salvar vídeo no endereço privado solicitado pelo Aion
+        if: ${{ inputs.id != '' || inputs.token != '' }}
+        env:
+          AION_RENDER_ID: ${{ inputs.id }}
+          AION_RENDER_TOKEN: ${{ inputs.token }}
+        run: |
+          set -euo pipefail
+          [[ "$AION_RENDER_ID" =~ ^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$ ]]
+          [[ "$AION_RENDER_TOKEN" =~ ^[0-9a-f-]{72}$ ]]
+          echo "::add-mask::$AION_RENDER_TOKEN"
+          status="$(curl --silent --show-error --max-time 60 --output /dev/null --write-out '%{http_code}' \
+            --header "Authorization: Bearer $AION_RENDER_TOKEN" --header 'Content-Type: video/mp4' \
+            --data-binary @saida/Aion-Vestido-3D.mp4 \
+            "https://ion-validacao.israelrodriguesnogueira.workers.dev/api/video/3d/resultado/$AION_RENDER_ID")"
+          test "$status" = "201"
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.id == '' && inputs.token == '' }}
+        with:
+          name: aion-vestido-3d
+          path: saida/Aion-Vestido-3D.mp4
+          if-no-files-found: error
+          retention-days: 7

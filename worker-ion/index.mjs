@@ -1,3 +1,5 @@
+import { arquivosEmD1 } from "./arquivos-d1.mjs";
+import { arquivosDoDono, receberVideo3D, reservarVideo3D } from "./arquivos.mjs";
 import { paginaExecutor } from "./executor-javascript.mjs";
 import { caminhosSincronismo, scriptSincronismo } from "./catalogo-sincronismo.mjs";
 import { protectOwnerRoute } from "../integracoes/ion-controle-dono.mjs";
@@ -96,14 +98,42 @@ export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
     if (path === "/executor-javascript" && request.method === "GET") return paginaExecutor();
+    const armazenamento = env.ION_VIDEOS_DB ? arquivosEmD1(env.ION_VIDEOS_DB) : undefined;
+    const resultado3D = path.match(/^\/api\/video\/3d\/resultado\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/);
+    if (resultado3D) {
+      try { return await receberVideo3D(request, armazenamento, resultado3D[1]); }
+      catch { return new Response(null, { status: 502 }); }
+    }
+    const arquivo = path.match(/^\/api\/arquivos(?:\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}))?$/);
+    if (arquivo) {
+      const ownerEmail = env.ION_OWNER_EMAIL?.trim().toLowerCase();
+      const audience = env.ION_GOOGLE_CLIENT_ID?.trim();
+      if (!ownerEmail?.endsWith("@gmail.com") || !/^[a-z0-9-]+\.apps\.googleusercontent\.com$/.test(audience ?? "")) {
+        return Response.json({ erro: "Autenticação não configurada." }, { status: 503 });
+      }
+      return protectOwnerRoute({
+        owner: { issuer: GOOGLE_ISSUER, subject: ownerEmail },
+        verifySession: () => verifyGoogleIdentity(request, audience),
+        audit: ({ actor, ...event }) => console.warn(JSON.stringify(event)),
+        action: arquivo[1] ? "abrir_video_privado" : "salvar_video_privado",
+        resource: "ion",
+      }, async () => {
+        try {
+          return await arquivosDoDono(request, armazenamento, arquivo[1]);
+        } catch {
+          return Response.json({ erro: "Armazenamento privado temporariamente indisponível." }, { status: 502 });
+        }
+      })(request);
+    }
     if (path === "/api/conversa") return responderConversa(request, env);
     if (path === "/api/foto") return analisarFoto(request, env);
     const consultaMudanca = path.match(/^\/api\/mudancas\/leitura\/([1-9][0-9]{0,15})$/);
     if (consultaMudanca) return statusMudanca(request, env, consultaMudanca[1]);
+    const video3D = path === "/api/video/3d";
     const bento = path === "/api/video/bento";
     const prepararMudanca = path === "/api/mudancas/leitura";
-    if (prepararMudanca || bento || path === "/api/video/transito") {
-      const workflow = prepararMudanca ? WORKFLOW_MUDANCA : bento ? "ion-animacao-bento.yml" : "ion-video-gratuito.yml";
+    if (video3D || prepararMudanca || bento || path === "/api/video/transito") {
+      const workflow = video3D ? "aion-video-3d.yml" : prepararMudanca ? WORKFLOW_MUDANCA : bento ? "ion-animacao-bento.yml" : "ion-video-gratuito.yml";
       if (request.method !== "POST") return new Response("Método indisponível.", { status: 405, headers: { Allow: "POST" } });
       const ownerEmail = env.ION_OWNER_EMAIL?.trim().toLowerCase();
       const audience = env.ION_GOOGLE_CLIENT_ID?.trim();
@@ -114,12 +144,25 @@ export default {
         owner: { issuer: GOOGLE_ISSUER, subject: ownerEmail },
         verifySession: () => verifyGoogleIdentity(request, audience),
         audit: ({ actor, ...event }) => console.warn(JSON.stringify(event)),
-        action: prepararMudanca ? "preparar_mudanca_leitura" : "solicitar_video_transito",
+        action: video3D ? "solicitar_video_3d" : prepararMudanca ? "preparar_mudanca_leitura" : "solicitar_video_transito",
         resource: "ion",
       }, async () => {
         const token = env.ION_GITHUB_ACTIONS_TOKEN;
         if (!token) return Response.json({ erro: "Integração com GitHub Actions indisponível." }, { status: 503 });
         const dispatch = { ref: "main" };
+        let pedido3D;
+        if (video3D) {
+          if (env.ION_VIDEO_3D_FREE_ENABLED !== "true" || !armazenamento) {
+            return Response.json({ erro: "O vídeo 3D aguarda ativação do workflow gratuito e do armazenamento privado." }, { status: 503 });
+          }
+          try {
+            pedido3D = await reservarVideo3D(armazenamento);
+          } catch {
+            return Response.json({ erro: "Não foi possível reservar o arquivo privado." }, { status: 502 });
+          }
+          dispatch.inputs = { id: pedido3D.id, token: pedido3D.token };
+          dispatch.return_run_details = true;
+        }
         if (prepararMudanca) {
           const body = await request.text();
           let ajuste, valor;
@@ -159,7 +202,7 @@ export default {
         }
         let idDaExecucao = null;
         let acompanhamento = "https://github.com/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/" + workflow;
-        if (prepararMudanca && result.status === 200) {
+        if ((prepararMudanca || video3D) && result.status === 200) {
           const execucao = await result.json().catch(() => null);
           if (Number.isSafeInteger(execucao?.workflow_run_id) && execucao.workflow_run_id > 0) {
             idDaExecucao = execucao.workflow_run_id;
@@ -175,6 +218,7 @@ export default {
             ? "Preparação solicitada. Confira os testes no resumo da execução."
             : "Workflow acionado. O MP4 ainda precisa ser gerado e validado.",
           acompanhamento,
+          ...(pedido3D ? { arquivo: "/?arquivo=" + pedido3D.id } : {}),
           ...(prepararMudanca ? { idDaExecucao } : {}),
         }, { status: 202 });
       });
@@ -305,9 +349,10 @@ function tipoDeProducao(texto, projeto) {
     || /\baudio\b.*\b(?:letra|musical|cantad[oa]|refr[aã]o)\b/.test(pedido);
   const temaVideo = /\b(?:video|short|storyboard|animacao)\b/.test(pedido);
   const criacao = /\b(?:cri[ae]|criar|faca|faz|fazer|ger[ae]|gerar|produz[ae]|produzir|quero|preciso|gostaria|mont[ae]|planeje|componh[ae]|compor|elabore|prepare|personalize|proposta)\b/.test(pedido);
-  const revisao = /\b(?:ajust[ae]|corrij[ae]|corrige|mud[ae]|mud[eoa]r|troc[ae]|troque|revise|refaca|melhore|mantenha|coloque|coloca|poe|inclua|adicione|acrescente|mais (?:rapido|lento|alegre)|sem (?:voz|letra))\b/.test(pedido);
+  const revisao = /\b(?:ajust[ae]|corrij[ae]|corrige|mud[ae]|mud[eoa]r|troc[ae]|troque|revise|refaca|melhore|mantenha|coloque|coloca|poe|inclua|adicione|acrescent[ae]|tir[ae]|remov[ae]|retir[ae]|mais (?:rapido|lento|alegre)|sem (?:voz|letra))\b/.test(pedido);
   if (/\b(?:so|somente|apenas) (?:o codigo|um codigo|a letra|uma letra|uma explicacao)\b/.test(pedido)) return null;
   if ((criacao || revisao) && temaVideo) return "video";
+  if (revisao && projeto === "video" && !criacao) return "video";
   if ((criacao || revisao) && temaMusical) return "musica";
   return revisao ? projeto : null;
 }
@@ -487,7 +532,7 @@ async function responderConversa(request, env) {
       ? " Se o usuário pedir criação ou revisão de um vídeo ou roteiro de vídeo, proponha um roteiro no formato JSON puro: "
         + "{\"acao\":\"roteiro_video\",\"titulo\":\"…\",\"cenas\":[{\"segundos\":3,\"visual\":\"O que se vê e o que acontece\",\"fala\":\"Fala ou narração\",\"legenda\":\"Texto curto na tela\"}]}. "
         + "Adapte a linguagem à idade do público. Use até 16 cenas ou blocos, com 500 caracteres por campo de visual e fala e 100 para legenda. "
-        + "Para vídeos longos, descreva as ações e falas principais de cada bloco de modo que o roteiro possa ser expandido e produzido."
+        + "Use fala vazia nas cenas em que o usuário pedir sem narração. Para vídeos longos, descreva as ações e falas principais de cada bloco de modo que o roteiro possa ser expandido e produzido."
         + (duracao != null ? " A soma exata das durações deve ser " + duracao + " segundos." : " Escolha uma duração adequada.")
         + (ultimoVideo ? " Preserve as partes aprovadas e revise apenas o que foi pedido neste roteiro: " + JSON.stringify(ultimoVideo) : "")
       : "";
@@ -1102,6 +1147,7 @@ function loginPage(clientId) {
             help.textContent = "Não foi possível reabrir o áudio salvo nesta conversa.";
           }
         }
+        if (entry.video3D) apresentarLinks3D(item, entry.video3D);
         if (videoValido(entry.roteiroVideo)) apresentarRoteiro(item, entry.roteiroVideo);
         if ((entry.proposta || entry.tentarProposta) && entry === chat[chat.length - 1]) apresentarAprovacao(item, entry);
         const gravacao = audiosDaSessao.get(entry);
@@ -1986,6 +2032,124 @@ function loginPage(clientId) {
       item.append(executar);
     }
 
+    async function gerarClipeDoRoteiro(item, body, record, roteiro, update) {
+      record.roteiroVideo = roteiro;
+      apresentarRoteiro(item, roteiro);
+      const segundos = roteiro.cenas.reduce((total, cena) => total + cena.segundos, 0);
+      if (segundos > 60 || roteiro.cenas.length > 10) {
+        update("Roteiro aprovado · " + segundos + " segundos. O renderizador local atende até 60 segundos e 10 cenas. Baixe o roteiro aprovado para seguir com a produção.");
+        return;
+      }
+      send.disabled = microphone.disabled = true;
+      recording = new AbortController();
+      cancelVideo.hidden = false;
+      const signal = recording.signal;
+      let contexto;
+      let etapa = "Preparar narração";
+      const temNarracao = roteiro.cenas.some(cena => cena.fala.trim());
+      try {
+        let falas;
+        if (temNarracao) {
+          body.textContent = etapa + " · voz Faber…";
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          contexto = new AudioContext();
+          await aguardarAudio(contexto.resume(), signal, 6000);
+          const piper = await aguardarAudio(
+            import("https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.5/+esm"), signal);
+          falas = [];
+          for (const [indice, cena] of roteiro.cenas.entries()) {
+            signal.throwIfAborted();
+            body.textContent = etapa + " · cena " + (indice + 1) + "/" + roteiro.cenas.length;
+            if (!cena.fala.trim()) {
+              falas.push(null);
+              continue;
+            }
+            const wav = await aguardarAudio(piper.predict({ text: cena.fala, voiceId: "pt_BR-faber-medium" }), signal);
+            const audio = await contexto.decodeAudioData(await wav.arrayBuffer());
+            if (audio.duration > cena.segundos * 1.25) {
+              throw new Error("A fala da cena " + (indice + 1) + " precisa ser mais curta ou a cena precisa durar mais.");
+            }
+            falas.push(audio);
+          }
+        }
+        etapa = "Renderizar clipe";
+        const { blob, extension } = await renderSample(roteiro.cenas.map(cena => cena.legenda),
+          progress => { body.textContent = etapa + " · " + progress + "%"; },
+          null, signal, roteiro.cenas.map(cena => cena.segundos * 1000), contexto, falas);
+        etapa = "Disponibilizar arquivo";
+        const url = URL.createObjectURL(blob);
+        videoUrls.push(url);
+        const video = document.createElement("video");
+        video.controls = video.playsInline = true;
+        video.preload = "metadata";
+        video.src = url;
+        const baixar = document.createElement("a");
+        baixar.href = url;
+        baixar.download = "aion-clipe." + extension;
+        baixar.textContent = "Baixar clipe";
+        const salvar = document.createElement("button");
+        salvar.type = "button";
+        salvar.textContent = "Salvar link privado";
+        const estado = document.createElement("p");
+        estado.setAttribute("role", "status");
+        salvar.onclick = async () => {
+          salvar.disabled = true;
+          estado.textContent = "Salvando vídeo…";
+          try {
+            estado.replaceChildren(await salvarVideoPrivado(blob, credential));
+          } catch (error) {
+            estado.textContent = error.message;
+            salvar.disabled = false;
+          }
+        };
+        item.append(video, baixar, salvar, estado);
+        update("Clipe de legendas " + (temNarracao ? "com narração Faber" : "sem narração")
+          + " · " + segundos + " s · " + extension.toUpperCase() + ". Abra ou baixe o arquivo nesta sessão.");
+      } catch (error) {
+        record.tentarProposta = true;
+        apresentarAprovacao(item, record);
+        update(signal.aborted ? "Produção cancelada." : etapa + " · " + error.message
+          + " O roteiro está abaixo. Diga “pode executar” para tentar novamente.");
+      } finally {
+        if (contexto) void contexto.close().catch(() => {});
+        recording = undefined;
+        cancelVideo.hidden = true;
+        send.disabled = microphone.disabled = false;
+      }
+    }
+
+    async function aguardarAudio(promessa, signal, limite = 45000) {
+      signal.throwIfAborted();
+      let prazo;
+      let abortar;
+      try {
+        return await Promise.race([promessa, new Promise((_, reject) => {
+          prazo = setTimeout(() => reject(new Error("A preparação do áudio excedeu o tempo esperado.")), limite);
+          abortar = () => reject(signal.reason);
+          signal.addEventListener("abort", abortar, { once: true });
+        })]);
+      } finally {
+        clearTimeout(prazo);
+        signal.removeEventListener("abort", abortar);
+      }
+    }
+
+    function apresentarLinks3D(item, dados) {
+      const links = [
+        [dados.acompanhamento, "Acompanhar renderização", /^https:\\/\\/github\\.com\\/israelrodriguesnogueira-ai\\/ADL-MIDIA\\/actions\\/(?:runs\\/[0-9]+|workflows\\/aion-video-3d\\.yml)$/],
+        [dados.arquivo, "Abrir vídeo privado", /^\\/\\?arquivo=[0-9a-f-]{36}$/],
+      ];
+      for (const [href, titulo, formato] of links) {
+        if (typeof href !== "string" || !formato.test(href)) continue;
+        const link = document.createElement("a");
+        link.href = href;
+        link.textContent = titulo;
+        const linha = document.createElement("p");
+        linha.append(link);
+        item.append(linha);
+      }
+    }
+
     function apresentarRoteiro(item, roteiro) {
       const baixar = document.createElement("a");
       const url = URL.createObjectURL(new Blob([textoRoteiro(roteiro)], { type: "text/plain;charset=utf-8" }));
@@ -2131,6 +2295,9 @@ function loginPage(clientId) {
       const ultimaProposta = respostaAnteriorDoProjeto?.proposta || respostaAnteriorDoProjeto?.tentarProposta
         ? respostaAnteriorDoProjeto
         : null;
+      const revisaoComAprovacao = !file && request.match(/^(.*?)\s*[,.;!?]?\s+e\s+(?:agora\s+)?(pode\s+(?:executar|fazer|gerar|produzir))[.!?]*$/i);
+      const revisaoDoVideo = revisaoComAprovacao && videoValido(respostaAnteriorDoProjeto?.roteiroVideo)
+        && tipoDeProducao(revisaoComAprovacao[1], "video") === "video" ? revisaoComAprovacao[1] : null;
       const aprovou = aprovacaoProducao(request);
       const mensagemAnterior = current[current.length - 4];
       const recuperarJingle = !file && aprovou && !ultimaProposta
@@ -2146,43 +2313,7 @@ function loginPage(clientId) {
         }
         const roteiro = ultimaProposta.roteiroVideo;
         if (videoValido(roteiro)) {
-          record.roteiroVideo = roteiro;
-          apresentarRoteiro(item, roteiro);
-          const segundos = roteiro.cenas.reduce((total, cena) => total + cena.segundos, 0);
-          if (segundos > 60 || roteiro.cenas.length > 10) {
-            update("Roteiro aprovado · " + segundos + " segundos. O renderizador de prévias atende até 60 segundos e 10 cenas. Baixe o roteiro aprovado para seguir com a produção.");
-            return;
-          }
-          send.disabled = microphone.disabled = true;
-          recording = new AbortController();
-          cancelVideo.hidden = false;
-          body.textContent = "Gerando a prévia com os textos do roteiro…";
-          try {
-            const { blob, extension } = await renderSample(roteiro.cenas.map(cena => cena.legenda),
-              progress => { body.textContent = "Gerando a prévia… " + progress + "%"; },
-              null, recording.signal, roteiro.cenas.map(cena => cena.segundos * 1000));
-            const url = URL.createObjectURL(blob);
-            videoUrls.push(url);
-            const video = document.createElement("video");
-            video.controls = video.playsInline = true;
-            video.preload = "metadata";
-            video.src = url;
-            const baixar = document.createElement("a");
-            baixar.href = url;
-            baixar.download = "aion-previa." + extension;
-            baixar.textContent = "Baixar prévia do vídeo";
-            item.append(video, baixar);
-            update("Prévia com os textos das cenas · " + segundos + " segundos, sem narração. O roteiro inclui a descrição visual e as falas da produção.");
-          } catch (error) {
-            record.tentarProposta = true;
-            apresentarAprovacao(item, record);
-            update((recording.signal.aborted ? "Prévia cancelada." : "A prévia falhou. " + error.message)
-              + " O roteiro está abaixo. Diga “pode executar” para tentar novamente.");
-          } finally {
-            recording = undefined;
-            cancelVideo.hidden = true;
-            send.disabled = microphone.disabled = false;
-          }
+          await gerarClipeDoRoteiro(item, body, record, roteiro, update);
           return;
         }
       }
@@ -2423,6 +2554,28 @@ function loginPage(clientId) {
           : "Arquivo adicionado nesta sessão. Use Baixar arquivo para salvar.");
         return;
       }
+      const pedido3D = !file && /^(?:(?:crie|gere|produza|fa[cz]a|renderize) (?:um )?)?video 3d (?:do|de um) vestido(?: preto)?$/.test(command);
+      if (pedido3D) {
+        send.disabled = microphone.disabled = true;
+        body.textContent = "Solicitando o giro 3D do vestido…";
+        try {
+          const resposta = await fetch("/api/video/3d", {
+            method: "POST",
+            headers: { Authorization: "Bearer " + credential },
+            signal: AbortSignal.timeout(15000),
+          });
+          const dados = await resposta.json();
+          if (!resposta.ok) throw new Error(dados.erro || "Não foi possível iniciar a produção 3D.");
+          record.video3D = { acompanhamento: dados.acompanhamento, arquivo: dados.arquivo };
+          update("Renderização solicitada. Acompanhe pelo GitHub. O link privado abre o vídeo assim que ele for salvo.");
+          apresentarLinks3D(item, record.video3D);
+        } catch (erro) {
+          update(erro.message);
+        } finally {
+          send.disabled = microphone.disabled = false;
+        }
+        return;
+      }
       const bentoRequest = /\\b(?:crie|cria|criar|faca|faz|fazer|gere|gerar|anime|animar|produza|quero)\\b/.test(command)
         && /\\b(?:desenho|animacao|video)\\b/.test(command)
         && /\\b(?:bento|cachorro)\\b/.test(command) && /\\bbola\\b/.test(command)
@@ -2503,6 +2656,7 @@ function loginPage(clientId) {
         }, 5000);
         try {
           const mensagens = montarContextoDaConversa(current);
+          if (revisaoDoVideo) mensagens.at(-1).content = revisaoDoVideo;
           const ultimaPartitura = findLastMessage(entrada => partituraValida(entrada.partitura))?.partitura;
           const ultimoVideo = findLastMessage(entrada => videoValido(entrada.roteiroVideo))?.roteiroVideo;
           const response = await fetch("/api/conversa", {
@@ -2526,6 +2680,11 @@ function loginPage(clientId) {
           } else if (response.ok && videoValido(payload.roteiroVideo)) {
             record.roteiroVideo = payload.roteiroVideo;
             record.proposta = true;
+            if (revisaoDoVideo) {
+              record.proposta = false;
+              await gerarClipeDoRoteiro(item, body, record, record.roteiroVideo, update);
+              return;
+            }
             apresentarRoteiro(item, record.roteiroVideo);
             apresentarAprovacao(item, record);
             update(textoRoteiro(record.roteiroVideo)
@@ -2644,15 +2803,17 @@ function loginPage(clientId) {
     };
   }
 
-  async function renderSample(customScenes, onProgress, photo, signal, tempos) {
+  async function renderSample(customScenes, onProgress, photo, signal, tempos, contexto, falas) {
     const canvas = document.createElement("canvas");
     canvas.width = 540;
     canvas.height = 960;
     if (!window.MediaRecorder || !canvas.captureStream) {
       throw new Error("Abra o Aion no Safari ou no Chrome atualizado.");
     }
-    const mime = ["video/mp4;codecs=avc1.42E01E", "video/mp4", "video/webm;codecs=vp8", "video/webm"]
-      .find(type => MediaRecorder.isTypeSupported(type));
+    const formatos = contexto
+      ? ["video/mp4", "video/webm;codecs=vp8,opus", "video/webm"]
+      : ["video/mp4;codecs=avc1.42E01E", "video/mp4", "video/webm;codecs=vp8", "video/webm"];
+    const mime = formatos.find(type => MediaRecorder.isTypeSupported(type));
     if (!mime) throw new Error("Nenhum formato de vídeo compatível.");
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("A tela de vídeo está indisponível.");
@@ -2684,7 +2845,10 @@ function loginPage(clientId) {
     let deadline;
     let abort;
     let recorder;
+    const fontes = [];
     try {
+      const destino = contexto?.createMediaStreamDestination();
+      if (destino) destino.stream.getAudioTracks().forEach(track => stream.addTrack(track));
       recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 1800000 });
       const chunks = [];
       recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
@@ -2729,6 +2893,18 @@ function loginPage(clientId) {
         }
         draw();
         recorder.start(500);
+        if (destino) {
+          const inicioAudio = contexto.currentTime;
+          for (const [indice, fala] of falas.entries()) {
+            if (!fala) continue;
+            const fonte = contexto.createBufferSource();
+            fonte.buffer = fala;
+            fonte.playbackRate.value = Math.max(1, fala.duration / (tempos[indice] / 1000));
+            fonte.connect(destino);
+            fontes.push(fonte);
+            fonte.start(inicioAudio + (cortes[indice - 1] ?? 0) / 1000);
+          }
+        }
         abort = () => reject(signal.reason);
         signal.addEventListener("abort", abort, { once: true });
         deadline = setTimeout(() => reject(new Error("A gravação excedeu o tempo esperado.")), duration + 6000);
@@ -2750,14 +2926,96 @@ function loginPage(clientId) {
       clearTimeout(deadline);
       if (abort) signal.removeEventListener("abort", abort);
       if (recorder && recorder.state !== "inactive") recorder.stop();
+      fontes.forEach(fonte => {
+        fonte.stop();
+        fonte.disconnect();
+      });
       stream.getTracks().forEach(track => track.stop());
     }
+  }
+
+  async function salvarVideoPrivado(blob, credential) {
+    const resposta = await fetch("/api/arquivos", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + credential, "Content-Type": blob.type },
+      body: blob,
+      signal: AbortSignal.timeout(30000),
+    });
+    const dados = await resposta.json();
+    if (!resposta.ok || typeof dados.caminho !== "string" || !dados.caminho.startsWith("/?arquivo=")) {
+      throw new Error(dados.erro || "Não consegui salvar o vídeo.");
+    }
+    const link = document.createElement("a");
+    link.href = dados.caminho;
+    link.textContent = "Abrir link privado";
+    return link;
   }
 
   function showPanel(areas, credential) {
     document.getElementById("entrada").hidden = true;
     document.getElementById("painel").hidden = false;
     connectCommands(areas, credential);
+    const importacao = document.createElement("label");
+    importacao.textContent = "Guardar vídeo privado (MP4 ou WebM, até 1,5 MB) ";
+    const arquivoLocal = document.createElement("input");
+    arquivoLocal.type = "file";
+    arquivoLocal.accept = "video/mp4,video/webm";
+    const upload = document.createElement("span");
+    upload.setAttribute("role", "status");
+    importacao.append(arquivoLocal, upload);
+    document.getElementById("painel").append(importacao);
+    arquivoLocal.onchange = async () => {
+      const [video] = arquivoLocal.files;
+      if (!video) return;
+      arquivoLocal.disabled = true;
+      upload.textContent = "Salvando vídeo…";
+      try {
+        upload.replaceChildren(await salvarVideoPrivado(video, credential));
+      } catch (error) {
+        upload.textContent = error.message;
+      } finally {
+        arquivoLocal.value = "";
+        arquivoLocal.disabled = false;
+      }
+    };
+    const arquivo = new URLSearchParams(location.search).get("arquivo");
+    if (/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(arquivo || "")) {
+      const secao = document.createElement("section");
+      secao.setAttribute("aria-label", "Vídeo privado");
+      const abrir = document.createElement("button");
+      abrir.type = "button";
+      abrir.textContent = "Carregar vídeo privado";
+      const estado = document.createElement("p");
+      estado.setAttribute("role", "status");
+      secao.append(abrir, estado);
+      document.getElementById("painel").prepend(secao);
+      abrir.onclick = async () => {
+        abrir.disabled = true;
+        estado.textContent = "Carregando…";
+        try {
+          const resposta = await fetch("/api/arquivos/" + arquivo, {
+            headers: { Authorization: "Bearer " + credential },
+            signal: AbortSignal.timeout(30000),
+          });
+          if (!resposta.ok) throw new Error((await resposta.json().catch(() => null))?.erro
+            || "Não foi possível abrir o vídeo.");
+          const dados = await resposta.blob();
+          const url = URL.createObjectURL(dados);
+          const player = document.createElement("video");
+          player.playsInline = player.controls = true;
+          player.src = url;
+          const download = document.createElement("a");
+          download.href = url;
+          download.download = dados.type === "video/mp4" ? "aion.mp4" : "aion.webm";
+          download.textContent = "Baixar vídeo";
+          estado.replaceChildren(player, download);
+        } catch (error) {
+          estado.textContent = error.message;
+          abrir.disabled = false;
+        }
+      };
+    }
+
     const list = document.getElementById("areas");
     list.replaceChildren();
     for (const area of areas) {
