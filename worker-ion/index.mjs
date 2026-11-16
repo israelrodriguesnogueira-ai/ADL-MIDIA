@@ -1195,7 +1195,13 @@ function loginPage(clientId) {
           return;
         }
         if (finishing) {
-          finish("Texto reconhecido. Revise e toque em Enviar.");
+          const proposta = current.at(-1);
+          const aprovarPorVoz = !send.disabled && !attachment && !textFile && !audioFile
+            && (proposta?.proposta || proposta?.tentarProposta)
+            && (partituraValida(proposta.partitura) || videoValido(proposta.roteiroVideo))
+            && aprovacaoProducao(input.value.trim());
+          finish(aprovarPorVoz ? "Aprovação por voz recebida." : "Texto reconhecido. Revise e toque em Enviar.");
+          if (aprovarPorVoz) form.requestSubmit();
           return;
         }
         quickEnds = Date.now() - startedAt < 1000 ? quickEnds + 1 : 0;
