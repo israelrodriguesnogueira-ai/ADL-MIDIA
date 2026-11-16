@@ -305,9 +305,10 @@ function tipoDeProducao(texto, projeto) {
     || /\baudio\b.*\b(?:letra|musical|cantad[oa]|refr[aã]o)\b/.test(pedido);
   const temaVideo = /\b(?:video|short|storyboard|animacao)\b/.test(pedido);
   const criacao = /\b(?:cri[ae]|criar|faca|faz|fazer|ger[ae]|gerar|produz[ae]|produzir|quero|preciso|gostaria|mont[ae]|planeje|componh[ae]|compor|elabore|prepare|personalize|proposta)\b/.test(pedido);
-  const revisao = /\b(?:ajust[ae]|corrij[ae]|corrige|mud[ae]|mud[eoa]r|troc[ae]|troque|revise|refaca|melhore|mantenha|coloque|coloca|poe|inclua|adicione|acrescente|mais (?:rapido|lento|alegre)|sem (?:voz|letra))\b/.test(pedido);
+  const revisao = /\b(?:ajust[ae]|corrij[ae]|corrige|mud[ae]|mud[eoa]r|troc[ae]|troque|revise|refaca|melhore|mantenha|coloque|coloca|poe|inclua|adicione|acrescent[ae]|tir[ae]|remov[ae]|retir[ae]|mais (?:rapido|lento|alegre)|sem (?:voz|letra))\b/.test(pedido);
   if (/\b(?:so|somente|apenas) (?:o codigo|um codigo|a letra|uma letra|uma explicacao)\b/.test(pedido)) return null;
   if ((criacao || revisao) && temaVideo) return "video";
+  if (revisao && projeto === "video" && !criacao) return "video";
   if ((criacao || revisao) && temaMusical) return "musica";
   return revisao ? projeto : null;
 }
@@ -487,7 +488,7 @@ async function responderConversa(request, env) {
       ? " Se o usuário pedir criação ou revisão de um vídeo ou roteiro de vídeo, proponha um roteiro no formato JSON puro: "
         + "{\"acao\":\"roteiro_video\",\"titulo\":\"…\",\"cenas\":[{\"segundos\":3,\"visual\":\"O que se vê e o que acontece\",\"fala\":\"Fala ou narração\",\"legenda\":\"Texto curto na tela\"}]}. "
         + "Adapte a linguagem à idade do público. Use até 16 cenas ou blocos, com 500 caracteres por campo de visual e fala e 100 para legenda. "
-        + "Para vídeos longos, descreva as ações e falas principais de cada bloco de modo que o roteiro possa ser expandido e produzido."
+        + "Use fala vazia nas cenas em que o usuário pedir sem narração. Para vídeos longos, descreva as ações e falas principais de cada bloco de modo que o roteiro possa ser expandido e produzido."
         + (duracao != null ? " A soma exata das durações deve ser " + duracao + " segundos." : " Escolha uma duração adequada.")
         + (ultimoVideo ? " Preserve as partes aprovadas e revise apenas o que foi pedido neste roteiro: " + JSON.stringify(ultimoVideo) : "")
       : "";
@@ -1986,6 +1987,93 @@ function loginPage(clientId) {
       item.append(executar);
     }
 
+    async function gerarClipeDoRoteiro(item, body, record, roteiro, update) {
+      record.roteiroVideo = roteiro;
+      apresentarRoteiro(item, roteiro);
+      const segundos = roteiro.cenas.reduce((total, cena) => total + cena.segundos, 0);
+      if (segundos > 60 || roteiro.cenas.length > 10) {
+        update("Roteiro aprovado · " + segundos + " segundos. O renderizador local atende até 60 segundos e 10 cenas. Baixe o roteiro aprovado para seguir com a produção.");
+        return;
+      }
+      send.disabled = microphone.disabled = true;
+      recording = new AbortController();
+      cancelVideo.hidden = false;
+      const signal = recording.signal;
+      let contexto;
+      let etapa = "Preparar narração";
+      const temNarracao = roteiro.cenas.some(cena => cena.fala.trim());
+      try {
+        let falas;
+        if (temNarracao) {
+          body.textContent = etapa + " · voz Faber…";
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          contexto = new AudioContext();
+          await aguardarAudio(contexto.resume(), signal, 6000);
+          const piper = await aguardarAudio(
+            import("https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.5/+esm"), signal);
+          falas = [];
+          for (const [indice, cena] of roteiro.cenas.entries()) {
+            signal.throwIfAborted();
+            body.textContent = etapa + " · cena " + (indice + 1) + "/" + roteiro.cenas.length;
+            if (!cena.fala.trim()) {
+              falas.push(null);
+              continue;
+            }
+            const wav = await aguardarAudio(piper.predict({ text: cena.fala, voiceId: "pt_BR-faber-medium" }), signal);
+            const audio = await contexto.decodeAudioData(await wav.arrayBuffer());
+            if (audio.duration > cena.segundos * 1.25) {
+              throw new Error("A fala da cena " + (indice + 1) + " precisa ser mais curta ou a cena precisa durar mais.");
+            }
+            falas.push(audio);
+          }
+        }
+        etapa = "Renderizar clipe";
+        const { blob, extension } = await renderSample(roteiro.cenas.map(cena => cena.legenda),
+          progress => { body.textContent = etapa + " · " + progress + "%"; },
+          null, signal, roteiro.cenas.map(cena => cena.segundos * 1000), contexto, falas);
+        etapa = "Disponibilizar arquivo";
+        const url = URL.createObjectURL(blob);
+        videoUrls.push(url);
+        const video = document.createElement("video");
+        video.controls = video.playsInline = true;
+        video.preload = "metadata";
+        video.src = url;
+        const baixar = document.createElement("a");
+        baixar.href = url;
+        baixar.download = "aion-clipe." + extension;
+        baixar.textContent = "Baixar clipe";
+        item.append(video, baixar);
+        update("Clipe de legendas " + (temNarracao ? "com narração Faber" : "sem narração")
+          + " · " + segundos + " s · " + extension.toUpperCase() + ". Abra ou baixe o arquivo nesta sessão.");
+      } catch (error) {
+        record.tentarProposta = true;
+        apresentarAprovacao(item, record);
+        update(signal.aborted ? "Produção cancelada." : etapa + " · " + error.message
+          + " O roteiro está abaixo. Diga “pode executar” para tentar novamente.");
+      } finally {
+        if (contexto) void contexto.close().catch(() => {});
+        recording = undefined;
+        cancelVideo.hidden = true;
+        send.disabled = microphone.disabled = false;
+      }
+    }
+
+    async function aguardarAudio(promessa, signal, limite = 45000) {
+      signal.throwIfAborted();
+      let prazo;
+      let abortar;
+      try {
+        return await Promise.race([promessa, new Promise((_, reject) => {
+          prazo = setTimeout(() => reject(new Error("A preparação do áudio excedeu o tempo esperado.")), limite);
+          abortar = () => reject(signal.reason);
+          signal.addEventListener("abort", abortar, { once: true });
+        })]);
+      } finally {
+        clearTimeout(prazo);
+        signal.removeEventListener("abort", abortar);
+      }
+    }
+
     function apresentarRoteiro(item, roteiro) {
       const baixar = document.createElement("a");
       const url = URL.createObjectURL(new Blob([textoRoteiro(roteiro)], { type: "text/plain;charset=utf-8" }));
@@ -2131,6 +2219,9 @@ function loginPage(clientId) {
       const ultimaProposta = respostaAnteriorDoProjeto?.proposta || respostaAnteriorDoProjeto?.tentarProposta
         ? respostaAnteriorDoProjeto
         : null;
+      const revisaoComAprovacao = !file && request.match(/^(.*?)\s*[,.;!?]?\s+e\s+(?:agora\s+)?(pode\s+(?:executar|fazer|gerar|produzir))[.!?]*$/i);
+      const revisaoDoVideo = revisaoComAprovacao && videoValido(respostaAnteriorDoProjeto?.roteiroVideo)
+        && tipoDeProducao(revisaoComAprovacao[1], "video") === "video" ? revisaoComAprovacao[1] : null;
       const aprovou = aprovacaoProducao(request);
       const mensagemAnterior = current[current.length - 4];
       const recuperarJingle = !file && aprovou && !ultimaProposta
@@ -2146,43 +2237,7 @@ function loginPage(clientId) {
         }
         const roteiro = ultimaProposta.roteiroVideo;
         if (videoValido(roteiro)) {
-          record.roteiroVideo = roteiro;
-          apresentarRoteiro(item, roteiro);
-          const segundos = roteiro.cenas.reduce((total, cena) => total + cena.segundos, 0);
-          if (segundos > 60 || roteiro.cenas.length > 10) {
-            update("Roteiro aprovado · " + segundos + " segundos. O renderizador de prévias atende até 60 segundos e 10 cenas. Baixe o roteiro aprovado para seguir com a produção.");
-            return;
-          }
-          send.disabled = microphone.disabled = true;
-          recording = new AbortController();
-          cancelVideo.hidden = false;
-          body.textContent = "Gerando a prévia com os textos do roteiro…";
-          try {
-            const { blob, extension } = await renderSample(roteiro.cenas.map(cena => cena.legenda),
-              progress => { body.textContent = "Gerando a prévia… " + progress + "%"; },
-              null, recording.signal, roteiro.cenas.map(cena => cena.segundos * 1000));
-            const url = URL.createObjectURL(blob);
-            videoUrls.push(url);
-            const video = document.createElement("video");
-            video.controls = video.playsInline = true;
-            video.preload = "metadata";
-            video.src = url;
-            const baixar = document.createElement("a");
-            baixar.href = url;
-            baixar.download = "aion-previa." + extension;
-            baixar.textContent = "Baixar prévia do vídeo";
-            item.append(video, baixar);
-            update("Prévia com os textos das cenas · " + segundos + " segundos, sem narração. O roteiro inclui a descrição visual e as falas da produção.");
-          } catch (error) {
-            record.tentarProposta = true;
-            apresentarAprovacao(item, record);
-            update((recording.signal.aborted ? "Prévia cancelada." : "A prévia falhou. " + error.message)
-              + " O roteiro está abaixo. Diga “pode executar” para tentar novamente.");
-          } finally {
-            recording = undefined;
-            cancelVideo.hidden = true;
-            send.disabled = microphone.disabled = false;
-          }
+          await gerarClipeDoRoteiro(item, body, record, roteiro, update);
           return;
         }
       }
@@ -2503,6 +2558,7 @@ function loginPage(clientId) {
         }, 5000);
         try {
           const mensagens = montarContextoDaConversa(current);
+          if (revisaoDoVideo) mensagens.at(-1).content = revisaoDoVideo;
           const ultimaPartitura = findLastMessage(entrada => partituraValida(entrada.partitura))?.partitura;
           const ultimoVideo = findLastMessage(entrada => videoValido(entrada.roteiroVideo))?.roteiroVideo;
           const response = await fetch("/api/conversa", {
@@ -2526,6 +2582,11 @@ function loginPage(clientId) {
           } else if (response.ok && videoValido(payload.roteiroVideo)) {
             record.roteiroVideo = payload.roteiroVideo;
             record.proposta = true;
+            if (revisaoDoVideo) {
+              record.proposta = false;
+              await gerarClipeDoRoteiro(item, body, record, record.roteiroVideo, update);
+              return;
+            }
             apresentarRoteiro(item, record.roteiroVideo);
             apresentarAprovacao(item, record);
             update(textoRoteiro(record.roteiroVideo)
@@ -2644,15 +2705,17 @@ function loginPage(clientId) {
     };
   }
 
-  async function renderSample(customScenes, onProgress, photo, signal, tempos) {
+  async function renderSample(customScenes, onProgress, photo, signal, tempos, contexto, falas) {
     const canvas = document.createElement("canvas");
     canvas.width = 540;
     canvas.height = 960;
     if (!window.MediaRecorder || !canvas.captureStream) {
       throw new Error("Abra o Aion no Safari ou no Chrome atualizado.");
     }
-    const mime = ["video/mp4;codecs=avc1.42E01E", "video/mp4", "video/webm;codecs=vp8", "video/webm"]
-      .find(type => MediaRecorder.isTypeSupported(type));
+    const formatos = contexto
+      ? ["video/mp4", "video/webm;codecs=vp8,opus", "video/webm"]
+      : ["video/mp4;codecs=avc1.42E01E", "video/mp4", "video/webm;codecs=vp8", "video/webm"];
+    const mime = formatos.find(type => MediaRecorder.isTypeSupported(type));
     if (!mime) throw new Error("Nenhum formato de vídeo compatível.");
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("A tela de vídeo está indisponível.");
@@ -2684,7 +2747,10 @@ function loginPage(clientId) {
     let deadline;
     let abort;
     let recorder;
+    const fontes = [];
     try {
+      const destino = contexto?.createMediaStreamDestination();
+      if (destino) destino.stream.getAudioTracks().forEach(track => stream.addTrack(track));
       recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 1800000 });
       const chunks = [];
       recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
@@ -2729,6 +2795,18 @@ function loginPage(clientId) {
         }
         draw();
         recorder.start(500);
+        if (destino) {
+          const inicioAudio = contexto.currentTime;
+          for (const [indice, fala] of falas.entries()) {
+            if (!fala) continue;
+            const fonte = contexto.createBufferSource();
+            fonte.buffer = fala;
+            fonte.playbackRate.value = Math.max(1, fala.duration / (tempos[indice] / 1000));
+            fonte.connect(destino);
+            fontes.push(fonte);
+            fonte.start(inicioAudio + (cortes[indice - 1] ?? 0) / 1000);
+          }
+        }
         abort = () => reject(signal.reason);
         signal.addEventListener("abort", abort, { once: true });
         deadline = setTimeout(() => reject(new Error("A gravação excedeu o tempo esperado.")), duration + 6000);
@@ -2750,6 +2828,10 @@ function loginPage(clientId) {
       clearTimeout(deadline);
       if (abort) signal.removeEventListener("abort", abort);
       if (recorder && recorder.state !== "inactive") recorder.stop();
+      fontes.forEach(fonte => {
+        fonte.stop();
+        fonte.disconnect();
+      });
       stream.getTracks().forEach(track => track.stop());
     }
   }
