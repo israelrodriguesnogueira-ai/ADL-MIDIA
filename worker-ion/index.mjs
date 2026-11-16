@@ -685,7 +685,7 @@ function loginPage(clientId) {
   #leitura-ion:not([hidden]) { display: flex; flex-shrink: 0; align-items: center; gap: .25rem; padding: .25rem; border-radius: 1rem; background: #19253a; }
   #leitura-ion audio { flex: 1; min-width: 0; height: 44px; }
   #leitura-ion button { justify-content: center; flex: 0 0 44px; padding: 0; border: 0; border-radius: .75rem; background: transparent; color: inherit; }
-  #leitura-status { flex: 1; margin: 0; padding: .25rem .5rem; font-size: .88rem; }
+  #leitura-status { flex: 1; min-width: 0; margin: 0; padding: .25rem .5rem; font-size: .88rem; overflow-wrap: anywhere; }
   #comando-ion { padding-bottom: max(.6rem, env(safe-area-inset-bottom)); }
   #anexo-status:empty, #ajuda-ion:empty { display: none; }
   .ion-top { padding: .35rem 0; flex-shrink: 0; }
@@ -1342,16 +1342,68 @@ function loginPage(clientId) {
       if (leitura?.audio) leitura.audio.playbackRate = Number(velocidadeLeitura.value);
     };
     pausaLeitura.onclick = () => {
-      if (!leitura?.fala) return;
-      if (leitor.paused) leitor.resume();
-      else leitor.pause();
+      const sessao = leitura;
+      if (!sessao?.trechos) return;
+      sessao.pausada = !sessao.pausada;
+      atualizarPausa(sessao);
+      if (sessao.pausada) leitor.pause();
+      else if (sessao.fala) leitor.resume();
+      else lerTrecho(sessao);
     };
     get("leitura-fechar").onclick = pararLeitura;
     let leitura;
     function deslocarLeitura(segundos) {
       const audio = leitura?.audio;
-      if (!audio || !Number.isFinite(audio.duration)) return;
-      audio.currentTime = Math.max(0, Math.min(audio.duration, audio.currentTime + segundos));
+      if (audio && Number.isFinite(audio.duration)) {
+        audio.currentTime = Math.max(0, Math.min(audio.duration, audio.currentTime + segundos));
+        return;
+      }
+      const sessao = leitura;
+      if (!sessao?.trechos) return;
+      const indice = Math.max(0, Math.min(sessao.trechos.length - 1, sessao.indice + Math.sign(segundos)));
+      if (indice === sessao.indice && segundos > 0) return;
+      sessao.indice = indice;
+      sessao.fala = null;
+      leitor.cancel();
+      lerTrecho(sessao);
+    }
+    function configurarSaltos(porTrecho) {
+      voltarLeitura.textContent = porTrecho ? "‹" : "−15";
+      avancarLeitura.textContent = porTrecho ? "›" : "+15";
+      for (const [controle, titulo] of [
+        [voltarLeitura, porTrecho ? "Voltar um trecho" : "Voltar 15 segundos"],
+        [avancarLeitura, porTrecho ? "Avançar um trecho" : "Avançar 15 segundos"],
+      ]) {
+        controle.title = titulo;
+        controle.setAttribute("aria-label", titulo);
+        controle.hidden = false;
+      }
+    }
+    function atualizarPausa(sessao) {
+      pausaLeitura.textContent = sessao.pausada ? "▶" : "Ⅱ";
+      pausaLeitura.setAttribute("aria-label", sessao.pausada ? "Continuar leitura" : "Pausar leitura");
+    }
+    function lerTrecho(sessao) {
+      statusLeitura.textContent = (sessao.indice + 1) + " / " + sessao.trechos.length + " · " + sessao.nome;
+      if (sessao.pausada) return;
+      const fala = new SpeechSynthesisUtterance(sessao.trechos[sessao.indice]);
+      fala.lang = "pt-BR";
+      if (sessao.voz) fala.voice = sessao.voz;
+      sessao.fala = fala;
+      fala.onend = () => {
+        if (leitura !== sessao || sessao.fala !== fala) return;
+        sessao.fala = null;
+        sessao.indice++;
+        if (sessao.indice < sessao.trechos.length) lerTrecho(sessao);
+        else pararLeitura();
+      };
+      fala.onerror = () => {
+        if (leitura !== sessao || sessao.fala !== fala) return;
+        pararLeitura();
+        help.textContent = "Não foi possível reproduzir a voz neste navegador.";
+      };
+      if (leitor.paused) leitor.resume();
+      leitor.speak(fala);
     }
     function iniciarLeitura(mensagem) {
       statusLeitura.textContent = mensagem;
@@ -1370,7 +1422,7 @@ function loginPage(clientId) {
         anterior.audio.remove();
         URL.revokeObjectURL(anterior.url);
       }
-      if (anterior.fala) leitor.cancel();
+      if (anterior.trechos) leitor.cancel();
     }
 
     function pedidoDeLeitura(command) {
@@ -1477,7 +1529,7 @@ function loginPage(clientId) {
               barraLeitura.insertBefore(audio, voltarLeitura);
               audio.onloadedmetadata = () => {
                 if (leitura !== sessao) return;
-                voltarLeitura.hidden = avancarLeitura.hidden = !Number.isFinite(audio.duration);
+                if (Number.isFinite(audio.duration)) configurarSaltos(false);
               };
               audio.onended = () => { if (leitura === sessao) pararLeitura(); };
               audio.onerror = () => {
@@ -1513,35 +1565,22 @@ function loginPage(clientId) {
             help.textContent = "A voz do aparelho não está disponível neste navegador.";
             return;
           }
-          const fala = new SpeechSynthesisUtterance(texto);
-          fala.lang = "pt-BR";
-          if (preferida) fala.voice = preferida;
-          leitura = { fala, botao: ouvir };
-          iniciarLeitura(preferida?.name || "Voz do aparelho");
+          const frases = typeof Intl.Segmenter === "function"
+            ? Array.from(new Intl.Segmenter("pt-BR", { granularity: "sentence" }).segment(texto), parte => parte.segment.trim())
+            : texto.split(/(?<=[.!?])\\s+|\\n+/);
+          const trechos = frases.flatMap(frase => frase.trim().match(/.{1,220}(?:\\s|$)|.{1,220}/g) || []);
+          if (!trechos.length) return;
+          const sessao = { botao: ouvir, voz: preferida, nome: preferida?.name || "Voz do aparelho",
+            trechos, indice: 0, pausada: false };
+          leitura = sessao;
+          iniciarLeitura(sessao.nome);
+          configurarSaltos(true);
           pausaLeitura.hidden = false;
-          pausaLeitura.textContent = "Ⅱ";
-          pausaLeitura.setAttribute("aria-label", "Pausar leitura");
-          fala.onpause = () => {
-            pausaLeitura.textContent = "▶";
-            pausaLeitura.setAttribute("aria-label", "Continuar leitura");
-          };
-          fala.onresume = () => {
-            pausaLeitura.textContent = "Ⅱ";
-            pausaLeitura.setAttribute("aria-label", "Pausar leitura");
-          };
+          atualizarPausa(sessao);
           iconeResposta(ouvir, "parar");
           ouvir.setAttribute("aria-label", "Parar leitura");
-          const encerrar = () => {
-            if (leitura?.fala !== fala) return;
-            pararLeitura();
-          };
-          fala.onend = encerrar;
-          fala.onerror = evento => {
-            if (leitura?.fala === fala) help.textContent = "Não foi possível reproduzir a voz neste navegador.";
-            encerrar();
-          };
           help.textContent = "";
-          leitor.speak(fala);
+          lerTrecho(sessao);
         };
         leitoresPorResposta.set(entrada, () => reproduzir());
         ouvir.onclick = () => reproduzir();
