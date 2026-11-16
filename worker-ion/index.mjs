@@ -641,7 +641,24 @@ function loginPage(clientId) {
   #seguranca-aion button { border: 1px solid #3b4b66; border-radius: .65rem; background: #19253a; color: inherit; }
   #seguranca-aion button[type="submit"] { color: #101827; background: #a8d1ff; }
   #seguranca-relatorio { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.45; }
-  #historico-ion button { width: 100%; text-align: left; overflow-wrap: anywhere; }
+  #historico-ion { padding: 0; }
+  #historico-ion li { padding: 0; border: 0; background: transparent; }
+  #historico-ion button { width: 100%; text-align: left; overflow-wrap: anywhere; border-radius: .75rem; }
+  #historico-ion button[aria-current="true"] { background: #243a55; border-color: #a8d1ff; }
+  #ion-menu { overflow: auto; padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+  @media (min-width: 900px) {
+    main:has(#painel:not([hidden])) { max-width: 86rem; }
+    #painel:not([hidden]):has(#ion-menu[open]) {
+      display: grid; grid-template-columns: 16rem minmax(0, 1fr);
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      column-gap: 1rem;
+    }
+    #painel:has(#ion-menu[open]) > .ion-top { grid-area: 1 / 2; }
+    #painel:has(#ion-menu[open]) > #leitura-ion { grid-area: 2 / 2; }
+    #painel:has(#ion-menu[open]) > #conversa-ion { grid-area: 3 / 2; }
+    #painel:has(#ion-menu[open]) > #comando-ion { grid-area: 4 / 2; }
+    #ion-menu[open] { grid-area: 1 / 1 / 5 / 2; position: static; width: auto; height: auto; max-height: none; border-radius: 1rem; }
+  }
   #anexos-ion:not([hidden]) { display: flex; gap: .5rem; flex-wrap: wrap; }
   .ion-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   #painel:not([hidden]) { height: max(0px, calc(var(--ion-altura-visivel, 100dvh) - .75rem)); min-height: 0; }
@@ -680,7 +697,7 @@ function loginPage(clientId) {
   </section>
   <section id="painel" hidden>
     <header class="ion-top">
-      <button id="menu-ion" type="button" aria-label="Abrir histórico">☰</button>
+      <button id="menu-ion" type="button" aria-label="Histórico de conversas" aria-controls="ion-menu" aria-expanded="false">☰</button>
       <h1 id="titulo-painel" tabindex="-1">Aion</h1>
       <button id="novo-ion" type="button">Nova conversa</button>
     </header>
@@ -873,6 +890,8 @@ function loginPage(clientId) {
     const log = document.getElementById("conversa-ion");
     const get = id => document.getElementById(id);
     const menu = get("ion-menu");
+    const menuButton = get("menu-ion");
+    const desktop = window.matchMedia("(min-width: 900px)");
     const history = get("historico-ion");
     const help = get("ajuda-ion");
     const attachmentStatus = get("anexo-status");
@@ -909,9 +928,14 @@ function loginPage(clientId) {
     };
     const videoUrls = [];
     function saveHistory() {
-      if (current.length) saved = [current, ...saved.filter(chat => chat !== current)].slice(0, 20);
+      const mudouOrdem = current.length && saved[0] !== current;
+      if (mudouOrdem) saved = [current, ...saved.filter(chat => chat !== current)].slice(0, 20);
       try { localStorage.setItem(storageKey, JSON.stringify(saved)); }
       catch { help.textContent = "O navegador não conseguiu salvar o histórico."; }
+      if (mudouOrdem && menu.open) renderHistory();
+    }
+    function irParaUltimaMensagem() {
+      log.scrollTop = log.scrollHeight;
     }
     function findLastMessage(predicate) {
       for (let index = current.length - 1; index >= 0; index--) {
@@ -946,28 +970,57 @@ function loginPage(clientId) {
         const gravacao = audiosDaSessao.get(entry);
         if (gravacao) apresentarAudio(item, gravacao, entry.versaoAudio);
       }
-      if (menu.open) menu.close();
+      if (menu.open && !desktop.matches) menu.close();
+      atualizarBarra();
+      irParaUltimaMensagem();
+      return true;
     }
-    get("novo-ion").onclick = () => openConversation([]);
-    get("menu-ion").onclick = () => {
+    get("novo-ion").onclick = () => {
+      if (openConversation([]) && menu.open) renderHistory();
+    };
+    function renderHistory() {
       history.replaceChildren();
       for (const chat of saved) {
         const item = document.createElement("li");
         const button = document.createElement("button");
         button.type = "button";
         button.textContent = chat[0]?.text.slice(0, 72) || "Conversa";
-        button.onclick = () => openConversation(chat);
+        if (chat === current) button.setAttribute("aria-current", "true");
+        button.onclick = () => {
+          if (!openConversation(chat)) return;
+          saveHistory();
+          if (desktop.matches) history.querySelector('[aria-current="true"]')?.focus({ preventScroll: true });
+        };
         item.append(button);
         history.append(item);
       }
-      menu.showModal();
+    }
+    function exibirHistorico() {
+      renderHistory();
+      if (desktop.matches) menu.show();
+      else menu.showModal();
+      menuButton.setAttribute("aria-expanded", "true");
+    }
+    menuButton.onclick = () => {
+      if (menu.open) menu.close();
+      else exibirHistorico();
     };
-    get("fechar-menu").onclick = () => menu.close();
+    menu.addEventListener("close", () => menuButton.setAttribute("aria-expanded", String(menu.open)));
+    desktop.addEventListener?.("change", () => {
+      if (menu.open) menu.close();
+      if (desktop.matches) exibirHistorico();
+      irParaUltimaMensagem();
+    });
+    get("fechar-menu").onclick = () => {
+      menu.close();
+      menuButton.focus({ preventScroll: true });
+    };
     get("limpar-ion").onclick = () => {
       if (send.disabled || !window.confirm("Limpar as conversas salvas neste navegador?")) return;
       saved = [];
       openConversation([]);
       saveHistory();
+      if (menu.open) renderHistory();
     };
 
     const attach = get("mais-ion");
@@ -1635,7 +1688,8 @@ function loginPage(clientId) {
     }
 
     openConversation(current);
-    atualizarBarra();
+    if (desktop.matches) exibirHistorico();
+    requestAnimationFrame(irParaUltimaMensagem);
     form.onsubmit = async event => {
       event.preventDefault();
       if (recognition) {
@@ -1695,11 +1749,13 @@ function loginPage(clientId) {
       const { item, body, ouvir, acoes, executarCodigo } = message("Ion", "Entendendo seu pedido…", record);
       current.push(record);
       const update = (reply) => {
+        const pertoDoFim = log.scrollHeight - log.scrollTop - log.clientHeight <= 48;
         body.textContent = reply;
         if (ouvir) ouvir.hidden = !reply.trim();
         if (acoes) acoes.hidden = !reply.trim();
         if (executarCodigo) executarCodigo.hidden = !codigoJavaScript(reply);
         record.text = reply;
+        if (pertoDoFim) irParaUltimaMensagem();
         saveHistory();
       };
       const versaoAnterior = findLastMessage(entrada => Number.isInteger(entrada.versaoAudio))?.versaoAudio || 0;
@@ -2327,6 +2383,8 @@ function loginPage(clientId) {
   }
 
   function showPanel(areas, credential) {
+    document.getElementById("entrada").hidden = true;
+    document.getElementById("painel").hidden = false;
     connectCommands(areas, credential);
     const list = document.getElementById("areas");
     list.replaceChildren();
@@ -2345,9 +2403,7 @@ function loginPage(clientId) {
       }
       list.append(item);
     }
-    document.getElementById("entrada").hidden = true;
-    document.getElementById("painel").hidden = false;
-    document.getElementById("titulo-painel").focus();
+    document.getElementById("titulo-painel").focus({ preventScroll: true });
   }
   window.addEventListener("load", () => {
     if (!window.google?.accounts?.id) {
