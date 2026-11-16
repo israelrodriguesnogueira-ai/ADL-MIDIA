@@ -52,15 +52,25 @@ export default {
         if (!token) return Response.json({ erro: "Integração com GitHub Actions indisponível." }, { status: 503 });
         const dispatch = { ref: "main" };
         if (prepararMudanca) {
-          let velocidade;
           const body = await request.text();
+          let ajuste, valor;
           try {
-            if (body.length <= 80) velocidade = JSON.parse(body)?.velocidade;
+            if (body.length <= 100) {
+              const dados = JSON.parse(body);
+              ajuste = dados.ajuste ?? "velocidade";
+              valor = dados.valor ?? dados.velocidade;
+            }
           } catch {}
-          if (!["0.75", "1", "1.25", "1.5", "2"].includes(velocidade)) {
-            return Response.json({ erro: "Velocidade inválida." }, { status: 400 });
+          const permitidos = new Map([
+            ["velocidade", ["0.75", "1", "1.25", "1.5", "2"]],
+            ["icones", ["14", "16", "18", "20"]],
+            ["historico", ["800", "900", "1024"]],
+          ]);
+          if (!permitidos.get(ajuste)?.includes(valor)) {
+            return Response.json({ erro: "Ajuste ou valor indisponível." }, { status: 400 });
           }
-          dispatch.inputs = { velocidade };
+          dispatch.inputs = ajuste === "velocidade" ? { ajuste, velocidade: valor } : { ajuste, valor };
+          dispatch.return_run_details = true;
         }
         let result;
         try {
@@ -78,7 +88,13 @@ export default {
         } catch {
           return Response.json({ erro: "Não foi possível acionar a tarefa." }, { status: 502 });
         }
-        if (result.status !== 204) {
+        let acompanhamento = "https://github.com/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/" + workflow;
+        if (prepararMudanca && result.status === 200) {
+          const execucao = await result.json().catch(() => null);
+          if (Number.isSafeInteger(execucao?.workflow_run_id) && execucao.workflow_run_id > 0) {
+            acompanhamento = "https://github.com/israelrodriguesnogueira-ai/ADL-MIDIA/actions/runs/" + execucao.workflow_run_id;
+          }
+        } else if (result.status !== 204) {
           console.warn(JSON.stringify({ event: "ion.workflow_dispatch_failed", workflow, status: result.status }));
           return Response.json({ erro: "O GitHub não aceitou a solicitação.", codigo: result.status }, { status: 502 });
         }
@@ -87,7 +103,7 @@ export default {
           detalhe: prepararMudanca
             ? "Preparação solicitada. Confira os testes no resumo da execução."
             : "Workflow acionado. O MP4 ainda precisa ser gerado e validado.",
-          acompanhamento: "https://github.com/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/" + workflow,
+          acompanhamento,
         }, { status: 202 });
       });
       return ownerRoute(request);
@@ -416,7 +432,7 @@ async function responderConversa(request, env) {
             + "A interface do Aion pode ler respostas em voz alta. Quando perguntarem como ouvir uma resposta, indique o botão de alto-falante abaixo dela ou o comando \"Leia a última resposta\". Nunca afirme que a reprodução começou sem confirmação da interface. "
             + "Para manutenção automotiva, diferencie correia dentada, que sincroniza virabrequim e comando de válvulas, da correia de acessórios, que pode acionar o alternador. "
             + "Para marcas de sincronismo, torques e procedimentos específicos, só dê instruções fundamentadas em documentação técnica aplicável. Se ela não estiver disponível na conversa, peça modelo, ano, código do motor e o manual ou a página relevante. "
-            + "Só confirme ações após receber o resultado do sistema. Blocos marcados como javascript ou js podem ser executados pelo usuário no navegador com o botão Executar JavaScript. Quando pedirem código executável no chat, use JavaScript independente, sem bibliotecas ou rede, e mostre o resultado com console.log ou return. Se pedirem para instalar dependências ou executar testes de um projeto, informe que esse executor roda somente JavaScript local. Nunca invente logs, artefatos, links de download ou resultados de testes. O comando “Prepare a velocidade padrão da leitura em 1,25x” solicita um ajuste para revisão. A publicação requer aprovação no GitHub. Se pedirem para implantar uma nova voz ou alterar a interface, explique o que é possível configurar agora e só confirme mudanças retornadas pelo sistema. Para trocar a voz de leitura disponível, indique Histórico de conversas → Voz de leitura.";
+            + "Só confirme ações após receber o resultado do sistema. Blocos marcados como javascript ou js podem ser executados pelo usuário no navegador com o botão Executar JavaScript. Quando pedirem código executável no chat, use JavaScript independente, sem bibliotecas ou rede, e mostre o resultado com console.log ou return. Se pedirem para instalar dependências ou executar testes de um projeto, informe que esse executor roda somente JavaScript local. Nunca invente logs, artefatos, links de download ou resultados de testes. Comandos como “Prepare a velocidade padrão da leitura em 1,25x”, “Prepare os ícones em 14 px” e “Prepare o histórico lateral a partir de 800 px” solicitam ajustes para revisão. Só diga que o teste passou se o resultado for confirmado. A publicação requer aprovação no GitHub. Se pedirem para implantar uma nova voz ou alterar a interface, explique o que é possível configurar agora e só confirme mudanças retornadas pelo sistema. Para trocar a voz de leitura disponível, indique Histórico de conversas → Voz de leitura.";
     const instrucaoProducao = instrucaoMusical + instrucaoVideo
       + " Entregue somente a proposta em JSON válido. O Aion usa a proposta para gerar um arquivo após a aprovação. "
       + "Se o pedido for de produção, entregue todos os campos do formato pedido, sem código de exemplo ou tutoriais."
@@ -1915,22 +1931,29 @@ function loginPage(clientId) {
         if (pertoDoFim) irParaUltimaMensagem();
         saveHistory();
       };
-      const pedidoDeMudanca = !file && /^(?:(?:aion|ion)[, ]+)?prepar(?:e|ar) a velocidade padrao da leitura em (0[.,]75|1(?:[.,](?:25|5))?|2)\\s*[x×]?\\s*[.!]?$/i
-        .exec(normalizarPedido(request));
-      if (pedidoDeMudanca) {
+      const pedidoInterface = normalizarPedido(request).replace(/^(?:aion|ion)[, ]+/, "");
+      const ajustesInterface = [
+        ["velocidade", /^prepar(?:e|ar) a velocidade padrao da leitura em (0[.,]75|1(?:[.,](?:25|5))?|2)\\s*[x×]?\\s*[.!]?$/],
+        ["icones", /^prepar(?:e|ar) (?:os icones|o tamanho dos icones) em (14|16|18|20)\\s*(?:px)?\\s*[.!]?$/],
+        ["historico", /^prepar(?:e|ar) o historico lateral (?:a partir de|em) (800|900|1024)\\s*(?:px)?\\s*[.!]?$/],
+      ];
+      const ajusteSolicitado = !file && ajustesInterface
+        .map(([ajuste, padrao]) => ({ ajuste, valor: padrao.exec(pedidoInterface)?.[1] }))
+        .find(opcao => opcao.valor);
+      if (ajusteSolicitado) {
         send.disabled = microphone.disabled = true;
         try {
           const response = await fetch("/api/mudancas/leitura", {
             method: "POST",
             headers: { Authorization: "Bearer " + credential, "Content-Type": "application/json" },
-            body: JSON.stringify({ velocidade: pedidoDeMudanca[1].replace(",", ".") }),
+            body: JSON.stringify({ ajuste: ajusteSolicitado.ajuste, valor: ajusteSolicitado.valor.replace(",", ".") }),
           });
           const payload = await response.json();
           if (!response.ok) {
             update(payload.erro || "O GitHub não aceitou a preparação.");
             return;
           }
-          update("Solicitei a preparação ao GitHub. Veja a execução mais recente para conferir os testes e abrir a proposta para revisão.");
+          update("Solicitei a preparação ao GitHub. Abra o link para conferir os testes e, se houver mudança, revisar a proposta no GitHub.");
           const acompanhamento = document.createElement("a");
           acompanhamento.href = payload.acompanhamento;
           acompanhamento.textContent = "Acompanhar preparação no GitHub";
