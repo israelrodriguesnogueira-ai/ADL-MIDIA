@@ -1,11 +1,19 @@
-name: Aion - Preparar mudança de leitura
+name: Aion - Preparar ajuste da interface
 
 on:
   workflow_dispatch:
     inputs:
+      ajuste:
+        description: Ajuste a preparar
+        type: choice
+        default: velocidade
+        options: [velocidade, icones, historico]
+      valor:
+        description: Tamanho dos ícones ou largura mínima do histórico em px
+        type: string
       velocidade:
         description: Velocidade padrão do leitor Faber
-        required: true
+        default: "1"
         type: choice
         options: ['0.75', '1', '1.25', '1.5', '2']
 
@@ -25,6 +33,8 @@ jobs:
           node-version: '22'
       - name: Preparar a alteração permitida
         env:
+          AJUSTE: ${{ inputs.ajuste }}
+          VALOR: ${{ inputs.valor }}
           VELOCIDADE: ${{ inputs.velocidade }}
         run: |
           python3 - <<'PY'
@@ -32,22 +42,42 @@ jobs:
           import re
           from pathlib import Path
 
-          velocidade = os.environ["VELOCIDADE"]
-          if velocidade not in {"0.75", "1", "1.25", "1.5", "2"}:
-              raise SystemExit("Velocidade inválida")
+          ajuste = os.environ["AJUSTE"]
+          valor = os.environ["VALOR"]
           arquivo = Path("worker-ion/index.mjs")
           codigo = arquivo.read_text(encoding="utf-8")
-          padrao = r'(<select id="leitura-velocidade"[^>]*>)(.*?)(</select>)'
-          original = re.findall(padrao, codigo, re.DOTALL)
-          if len(original) != 1:
-              raise SystemExit("Controle de velocidade indisponível")
-          abertura, opcoes, fechamento = original[0]
-          novas_opcoes = opcoes.replace(" selected", "")
-          opcao = f'<option value="{velocidade}">'
-          if novas_opcoes.count(opcao) != 1:
-              raise SystemExit("Opção de velocidade indisponível")
-          novas_opcoes = novas_opcoes.replace(opcao, f'<option value="{velocidade}" selected>')
-          atualizado = codigo.replace(abertura + opcoes + fechamento, abertura + novas_opcoes + fechamento)
+
+          def substituir_unico(texto, padrao, substituto):
+              atualizado, total = re.subn(padrao, substituto, texto, flags=re.DOTALL)
+              if total != 1:
+                  raise SystemExit("Controle esperado não encontrado uma única vez")
+              return atualizado
+
+          if ajuste == "velocidade":
+              velocidade = os.environ["VELOCIDADE"]
+              if velocidade not in {"0.75", "1", "1.25", "1.5", "2"}:
+                  raise SystemExit("Velocidade inválida")
+              def selecionar(match):
+                  abertura, opcoes, fechamento = match.groups()
+                  opcao = f'<option value="{velocidade}">'
+                  opcoes = substituir_unico(
+                      opcoes.replace(" selected", ""), re.escape(opcao),
+                      f'<option value="{velocidade}" selected>'
+                  )
+                  return abertura + opcoes + fechamento
+              atualizado = substituir_unico(codigo, r'(<select id="leitura-velocidade"[^>]*>)(.*?)(</select>)', selecionar)
+          elif ajuste == "icones" and valor in {"14", "16", "18", "20"}:
+              atualizado = substituir_unico(
+                  codigo,
+                  r'\.ion-resposta-acoes svg \{ width: \d+px; height: \d+px; \}',
+                  f'.ion-resposta-acoes svg {{ width: {valor}px; height: {valor}px; }}'
+              )
+          elif ajuste == "historico" and valor in {"800", "900", "1024"}:
+              media = f'(min-width: {valor}px)'
+              atualizado = substituir_unico(codigo, r'@media \(min-width: \d+px\)(?= \{\s+main:has)', f'@media {media}')
+              atualizado = substituir_unico(atualizado, r'window\.matchMedia\("\(min-width: \d+px\)"\)', f'window.matchMedia("{media}")')
+          else:
+              raise SystemExit("Ajuste ou valor inválido")
           arquivo.write_text(atualizado, encoding="utf-8")
           PY
       - name: Validar a proposta
@@ -58,15 +88,15 @@ jobs:
       - name: Disponibilizar versão para revisão
         run: |
           if git diff --quiet; then
-            echo 'A velocidade pedida já é o padrão.' >> "$GITHUB_STEP_SUMMARY"
+            echo 'O valor pedido já está configurado.' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          branch="aion/proposta-leitura-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          branch="aion/proposta-interface-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           git switch -c "$branch"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add worker-ion/index.mjs
-          git commit -m "Ajusta velocidade padrão da leitura do Aion"
+          git commit -m "Ajusta a interface do Aion"
           git push origin "HEAD:refs/heads/$branch"
           printf 'Testes concluídos. [Revisar alteração e abrir proposta](%s/%s/compare/ion/controle-dono...%s?expand=1). A incorporação a ion/controle-dono é a aprovação de publicação.\n' \
             "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$branch" >> "$GITHUB_STEP_SUMMARY"
