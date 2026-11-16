@@ -3,6 +3,26 @@ import { caminhosSincronismo, scriptSincronismo } from "./catalogo-sincronismo.m
 import { protectOwnerRoute } from "../integracoes/ion-controle-dono.mjs";
 
 const LIMITE_TEXTO_CONVERSA = 2000;
+const LIMITE_MENSAGENS_RECENTES = 9;
+const LIMITE_MENSAGENS_ANTERIORES = 8;
+const LIMITE_MENSAGENS_CONVERSA = LIMITE_MENSAGENS_RECENTES + LIMITE_MENSAGENS_ANTERIORES;
+
+function montarContextoDaConversa(conversa) {
+  const mensagens = conversa.filter(entrada =>
+    (entrada.who === "Você" || entrada.who === "Ion") && entrada.text.trim());
+  const recentes = mensagens.slice(-LIMITE_MENSAGENS_RECENTES);
+  const anteriores = mensagens.slice(0, -LIMITE_MENSAGENS_RECENTES);
+  const inicio = anteriores.slice(0, LIMITE_MENSAGENS_ANTERIORES / 2);
+  const retomada = anteriores.slice(inicio.length).slice(-LIMITE_MENSAGENS_ANTERIORES / 2);
+  const formatar = (entrada, limite) => ({
+    role: entrada.who === "Você" ? "user" : "assistant",
+    content: entrada.text.trim().slice(0, limite),
+  });
+  return [
+    ...inicio.concat(retomada).map(entrada => formatar(entrada, 500)),
+    ...recentes.map(entrada => formatar(entrada, LIMITE_TEXTO_CONVERSA)),
+  ];
+}
 const LIMITE_PERGUNTA_FOTO_CODIFICADA = 6000;
 
 export default {
@@ -334,7 +354,7 @@ async function responderConversa(request, env) {
     try { ({ mensagens, ultimaPartitura, ultimoVideo } = JSON.parse(body)); } catch {
       return Response.json({ erro: "Solicitação inválida." }, { status: 400 });
     }
-    if (!Array.isArray(mensagens) || !mensagens.length || mensagens.length > 9
+    if (!Array.isArray(mensagens) || !mensagens.length || mensagens.length > LIMITE_MENSAGENS_CONVERSA
         || mensagens.some(m => !m || !["user", "assistant"].includes(m.role)
           || typeof m.content !== "string" || !m.content.trim() || m.content.length > LIMITE_TEXTO_CONVERSA)
         || mensagens.at(-1).role !== "user") {
@@ -376,7 +396,7 @@ async function responderConversa(request, env) {
         + "Se pedirem voz cantada ou criticarem a voz e uma gravação própria permitir avançar, responda somente com {\"acao\":\"pedir_gravacao\"}. "
         + (ultimaPartitura ? " A última versão é " + JSON.stringify(ultimaPartitura) + "." : "")
       : "";
-    const instrucaoConversa = "Você é o Aion. Responda em português brasileiro e use o contexto da conversa. ";
+    const instrucaoConversa = "Você é o Aion. Responda em português brasileiro. Em pedidos de continuidade, use o projeto que o usuário indicou, preserve as decisões dele e retome a última etapa sustentada pelo histórico. Distinga etapas concluídas de propostas e use as correções mais recentes. Peça só o dado que faltar para avançar. ";
     const orientacaoGeral = "Responda ao objetivo do usuário com o resultado solicitado. Gere código somente se ele pedir explicitamente código, programação ou um arquivo-fonte. Se o usuário pedir um arquivo final ou a execução de uma tarefa, use a capacidade disponível. Quando faltar uma informação indispensável, faça uma pergunta curta e específica. Quando pedirem código, use um bloco identificado pela linguagem. "
             + "A interface do Aion pode ler respostas em voz alta. Quando perguntarem como ouvir uma resposta, indique o botão de alto-falante abaixo dela ou o comando \"Leia a última resposta\". Nunca afirme que a reprodução começou sem confirmação da interface. "
             + "Para manutenção automotiva, diferencie correia dentada, que sincroniza virabrequim e comando de válvulas, da correia de acessórios, que pode acionar o alternador. "
@@ -815,6 +835,10 @@ function loginPage(clientId) {
 <script>
   const caminhosSincronismo = ${JSON.stringify(caminhosSincronismo)};
   ${scriptSincronismo}
+  const LIMITE_TEXTO_CONVERSA = ${LIMITE_TEXTO_CONVERSA};
+  const LIMITE_MENSAGENS_RECENTES = ${LIMITE_MENSAGENS_RECENTES};
+  const LIMITE_MENSAGENS_ANTERIORES = ${LIMITE_MENSAGENS_ANTERIORES};
+  ${montarContextoDaConversa.toString()}
   ${partituraValida.toString()}
   ${videoValido.toString()}
   ${textoRoteiro.toString()}
@@ -2128,11 +2152,7 @@ function loginPage(clientId) {
         /\\b(?:crie|cria|criar|faca|faz|fazer|gere|gera|gerar|produza|produzir|quero|monte|planeje|anim[eia])\\b.*\\b(?:video|short|roteiro|animacao)\\b/.test(command)
         || videoValido(respostaAnteriorDoProjeto?.roteiroVideo));
       if (recuperarJingle || projetoDeVideo || (!videoRequest && !trafficRequest && !bentoRequest)) {
-        const mensagens = current.slice(0, -1).filter(entry =>
-          ["Você", "Ion"].includes(entry.who) && entry.text.trim()).slice(-9).map(entry => ({
-          role: entry.who === "Você" ? "user" : "assistant",
-          content: entry.text.slice(0, ${LIMITE_TEXTO_CONVERSA}),
-        }));
+        const mensagens = montarContextoDaConversa(current);
         send.disabled = microphone.disabled = true;
         try {
           const ultimaPartitura = findLastMessage(entrada => partituraValida(entrada.partitura))?.partitura;
