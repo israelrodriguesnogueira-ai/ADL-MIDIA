@@ -631,7 +631,16 @@ function loginPage(clientId) {
   #comando-ion { position: sticky; bottom: 0; background: #101827; padding: .6rem 0 max(.6rem, env(safe-area-inset-bottom)); margin: 0; }
   #ajuda-ion, #anexo-status { margin: 0; font-size: .85rem; }
   #ion-menu { position: fixed; inset: 0 auto 0 0; margin: 0; width: min(85vw, 24rem); height: 100dvh; max-height: 100dvh; box-sizing: border-box; border: 1px solid #3b4b66; background: #101827; color: #f3f6fc; padding: 1rem; }
-  #ion-menu::backdrop { background: #0009; }
+  #ion-menu::backdrop, #seguranca-aion::backdrop { background: #0009; }
+  #seguranca-aion { box-sizing: border-box; width: min(34rem, calc(100% - 1.5rem)); max-height: 90%; padding: 1rem; border: 1px solid #3b4b66; border-radius: 1rem; background: #101827; color: inherit; }
+  #seguranca-aion h2 { margin: 0; font-size: 1.2rem; }
+  #seguranca-aion fieldset { display: grid; gap: .45rem; margin: 0 0 1rem; border: 1px solid #3b4b66; border-radius: .65rem; }
+  #seguranca-aion label { margin-top: .35rem; }
+  #seguranca-aion select, #seguranca-aion button { min-height: 44px; font: inherit; }
+  #seguranca-aion select { width: 100%; background: #19253a; color: inherit; }
+  #seguranca-aion button { border: 1px solid #3b4b66; border-radius: .65rem; background: #19253a; color: inherit; }
+  #seguranca-aion button[type="submit"] { color: #101827; background: #a8d1ff; }
+  #seguranca-relatorio { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.45; }
   #historico-ion button { width: 100%; text-align: left; overflow-wrap: anywhere; }
   #anexos-ion:not([hidden]) { display: flex; gap: .5rem; flex-wrap: wrap; }
   .ion-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
@@ -690,7 +699,64 @@ function loginPage(clientId) {
         <label for="voz-leitura-ion">Voz do aparelho (opcional)</label>
         <select id="voz-leitura-ion"></select>
       </div>
+      <button id="abrir-seguranca" type="button">Segurança Wi-Fi e Bluetooth</button>
       <button id="sair" type="button">Sair</button>
+    </dialog>
+    <dialog id="seguranca-aion" aria-labelledby="seguranca-titulo">
+      <div class="ion-top">
+        <h2 id="seguranca-titulo">Segurança Wi-Fi e Bluetooth</h2>
+        <button id="fechar-seguranca" type="button">Fechar</button>
+      </div>
+      <p>Marque as configurações dos seus equipamentos. As respostas ficam nesta página e você pode baixar o relatório.</p>
+      <form id="seguranca-form">
+        <fieldset>
+          <legend>Wi-Fi</legend>
+          <label for="seguranca-0">Proteção da rede</label>
+          <select id="seguranca-0" name="resposta-0">
+            <option value="">Não sei</option>
+            <option value="0">WPA3</option>
+            <option value="1">WPA2-AES ou modo misto WPA2/WPA3</option>
+            <option value="2">Rede aberta, WEP, WPA antigo ou TKIP</option>
+            <option value="na">Não se aplica</option>
+          </select>
+          <label for="seguranca-1">WPS</label>
+          <select id="seguranca-1" name="resposta-1">
+            <option value="">Não sei</option>
+            <option value="0">Desativado</option>
+            <option value="1">Ativado</option>
+            <option value="na">Não se aplica</option>
+          </select>
+          <label for="seguranca-2">Atualizações do roteador</label>
+          <select id="seguranca-2" name="resposta-2">
+            <option value="">Não sei</option>
+            <option value="0">Em dia</option>
+            <option value="1">Pendentes</option>
+            <option value="2">Roteador sem suporte</option>
+            <option value="na">Não se aplica</option>
+          </select>
+        </fieldset>
+        <fieldset>
+          <legend>Bluetooth</legend>
+          <label for="seguranca-3">Dispositivos pareados</label>
+          <select id="seguranca-3" name="resposta-3">
+            <option value="">Não sei</option>
+            <option value="0">Reconheço e uso todos</option>
+            <option value="1">Há dispositivos desconhecidos</option>
+            <option value="2">Há dispositivos sem uso</option>
+            <option value="na">Não se aplica</option>
+          </select>
+          <label for="seguranca-4">Visibilidade para novos aparelhos</label>
+          <select id="seguranca-4" name="resposta-4">
+            <option value="">Não sei</option>
+            <option value="0">Somente durante o pareamento ou Bluetooth desligado</option>
+            <option value="1">Visível o tempo todo</option>
+            <option value="na">Não se aplica</option>
+          </select>
+        </fieldset>
+        <button type="submit">Gerar relatório</button>
+      </form>
+      <pre id="seguranca-relatorio" tabindex="-1" hidden></pre>
+      <button id="baixar-seguranca" type="button" hidden>Baixar relatório</button>
     </dialog>
     <ul id="conversa-ion" role="log" aria-label="Conversa com o Aion"></ul>
     <form id="comando-ion">
@@ -743,6 +809,61 @@ function loginPage(clientId) {
   ${tratarGravacao.toString()}
   const status = document.getElementById("status");
   document.getElementById("sair").addEventListener("click", () => window.location.reload());
+
+  const seguranca = document.getElementById("seguranca-aion");
+  const formularioSeguranca = document.getElementById("seguranca-form");
+  const relatorioSeguranca = document.getElementById("seguranca-relatorio");
+  const baixarSeguranca = document.getElementById("baixar-seguranca");
+
+  document.getElementById("abrir-seguranca").onclick = () => seguranca.showModal();
+  document.getElementById("fechar-seguranca").onclick = () => seguranca.close();
+  formularioSeguranca.onchange = () => {
+    relatorioSeguranca.hidden = baixarSeguranca.hidden = true;
+  };
+  formularioSeguranca.onsubmit = event => {
+    event.preventDefault();
+    const respostas = new FormData(formularioSeguranca);
+    const regras = [
+      ["Wi-Fi · Proteção da rede","Confira o modo de segurança nas configurações do roteador.",[null,["Melhoria","Use WPA3 quando o roteador e os aparelhos forem compatíveis."],["Prioridade alta","Ative WPA3 ou WPA2-AES em todos os pontos de acesso próprios."]]],
+      ["Wi-Fi · WPS","Confira se o WPS está desativado.",[null,["Prioridade alta","Desative o WPS nas configurações do roteador."]]],
+      ["Wi-Fi · Atualizações do roteador","Confira se o fabricante ainda oferece atualizações para o modelo.",[null,["Melhoria","Instale a atualização indicada pelo fabricante ou provedor."],["Melhoria","Planeje a troca por um roteador que ainda receba atualizações."]]],
+      ["Bluetooth · Dispositivos pareados","Abra a lista de dispositivos pareados e confira se reconhece todos.",[null,["Prioridade alta","Revise a lista e remova os pareamentos que você não reconhece."],["Melhoria","Remova os pareamentos dos dispositivos que você não usa mais."]]],
+      ["Bluetooth · Visibilidade para novos aparelhos","Confira se o aparelho fica visível apenas durante o pareamento.",[null,["Melhoria","Permita que o aparelho fique visível somente durante um novo pareamento."]]]
+    ];
+    const acoes = new Map([["Prioridade alta", []], ["Melhoria", []], ["A verificar", []]]);
+    let aplicaveis = 0;
+    regras.forEach(([titulo, verificar, opcoes], indice) => {
+      const resposta = respostas.get("resposta-" + indice);
+      if (resposta === "na") return;
+      aplicaveis++;
+      const item = resposta ? opcoes[Number(resposta)] : ["A verificar", verificar];
+      if (item) acoes.get(item[0]).push("• " + titulo + " — " + item[1]);
+    });
+
+    const blocos = [];
+    for (const [grupo, itens] of acoes) {
+      if (itens.length) blocos.push(grupo + "\\n" + itens.join("\\n"));
+    }
+    const resumo = aplicaveis
+      ? "Pontos avaliados: " + aplicaveis + ". Resultado baseado nas configurações informadas."
+      : "Nenhum item aplicável foi selecionado.";
+    relatorioSeguranca.textContent = ["Relatório de segurança Wi-Fi e Bluetooth", resumo,
+      ...(blocos.length ? blocos : aplicaveis ? ["Nenhuma correção foi indicada para as respostas fornecidas."] : [])
+    ].join("\\n\\n");
+    relatorioSeguranca.hidden = baixarSeguranca.hidden = false;
+    relatorioSeguranca.focus();
+  };
+  baixarSeguranca.onclick = () => {
+    const arquivo = new Blob([relatorioSeguranca.textContent], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(arquivo);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "relatorio-seguranca-aion.txt";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
 
   function connectCommands(areas, credential) {
     const central = areas.find(area => area.nome === "Central 6D" && area.url);
