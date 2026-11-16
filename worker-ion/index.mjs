@@ -2148,6 +2148,35 @@ function loginPage(clientId) {
         linha.append(link);
         item.append(linha);
       }
+      if (typeof dados.arquivo !== "string" || !/^\\/\\?arquivo=[0-9a-f-]{36}$/.test(dados.arquivo)) return;
+      const status = document.createElement("p");
+      status.setAttribute("role", "status");
+      const consultar = document.createElement("button");
+      consultar.type = "button";
+      consultar.textContent = "Verificar progresso";
+      const atualizar = async () => {
+        consultar.disabled = true;
+        status.textContent = "Consultando a produção…";
+        try {
+          const id = new URL(dados.arquivo, location.origin).searchParams.get("arquivo");
+          const resposta = await fetch("/api/arquivos/" + id, {
+            method: "HEAD",
+            headers: { Authorization: "Bearer " + credential },
+            signal: AbortSignal.timeout(10000),
+          });
+          if (resposta.status === 200) status.textContent = "Vídeo pronto. Abra o link privado para assistir.";
+          else if (resposta.status === 202) status.textContent = "Pedido recebido. O arquivo ainda não chegou.";
+          else if (resposta.status === 404) status.textContent = "Arquivo indisponível. Confira a renderização antes de pedir novamente.";
+          else if (resposta.status === 401 || resposta.status === 403) status.textContent = "Entre novamente para consultar o vídeo.";
+          else status.textContent = "Consulta temporariamente indisponível.";
+        } catch {
+          status.textContent = "Não foi possível consultar o progresso. Tente novamente.";
+        } finally {
+          consultar.disabled = false;
+        }
+      };
+      consultar.onclick = atualizar;
+      item.append(consultar, status);
     }
 
     function apresentarRoteiro(item, roteiro) {
