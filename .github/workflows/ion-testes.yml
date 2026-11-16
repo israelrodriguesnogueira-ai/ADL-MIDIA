@@ -5,6 +5,7 @@ on:
       - 'worker-ion/**'
       - 'integracoes/ion-controle-dono.mjs'
       - 'tests/ion-video-dispatch.test.mjs'
+      - 'tests/ion-arquivos.test.mjs'
       - '.github/workflows/ion-testes.yml'
   workflow_dispatch:
 
@@ -22,5 +23,5 @@ jobs:
           node-version: '22'
       - name: Validar sintaxe
         run: node --check worker-ion/index.mjs
-      - name: Testar acesso e comando de video
-        run: node --test tests/ion-video-dispatch.test.mjs
+      - name: Testar acesso, vídeo e links privados
+        run: node --test tests/ion-video-dispatch.test.mjs tests/ion-arquivos.test.mjs
