@@ -1,0 +1,72 @@
+name: Aion - Preparar mudança de leitura
+
+on:
+  workflow_dispatch:
+    inputs:
+      velocidade:
+        description: Velocidade padrão do leitor Faber
+        required: true
+        type: choice
+        options: ['0.75', '1', '1.25', '1.5', '2']
+
+permissions:
+  contents: write
+
+jobs:
+  proposta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ion/controle-dono
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Preparar a alteração permitida
+        env:
+          VELOCIDADE: ${{ inputs.velocidade }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          velocidade = os.environ["VELOCIDADE"]
+          if velocidade not in {"0.75", "1", "1.25", "1.5", "2"}:
+              raise SystemExit("Velocidade inválida")
+          arquivo = Path("worker-ion/index.mjs")
+          codigo = arquivo.read_text(encoding="utf-8")
+          padrao = r'(<select id="leitura-velocidade"[^>]*>)(.*?)(</select>)'
+          original = re.findall(padrao, codigo, re.DOTALL)
+          if len(original) != 1:
+              raise SystemExit("Controle de velocidade indisponível")
+          abertura, opcoes, fechamento = original[0]
+          novas_opcoes = opcoes.replace(" selected", "")
+          opcao = f'<option value="{velocidade}">'
+          if novas_opcoes.count(opcao) != 1:
+              raise SystemExit("Opção de velocidade indisponível")
+          novas_opcoes = novas_opcoes.replace(opcao, f'<option value="{velocidade}" selected>')
+          atualizado = codigo.replace(abertura + opcoes + fechamento, abertura + novas_opcoes + fechamento)
+          arquivo.write_text(atualizado, encoding="utf-8")
+          PY
+      - name: Validar a proposta
+        run: |
+          node --check worker-ion/index.mjs
+          node --test tests/*.test.mjs testes/*.test.mjs
+          git diff --check
+      - name: Disponibilizar versão para revisão
+        run: |
+          if git diff --quiet; then
+            echo 'A velocidade pedida já é o padrão.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          branch="aion/proposta-leitura-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git switch -c "$branch"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add worker-ion/index.mjs
+          git commit -m "Ajusta velocidade padrão da leitura do Aion"
+          git push origin "HEAD:refs/heads/$branch"
+          printf 'Testes concluídos. [Revisar alteração e abrir proposta](%s/%s/compare/ion/controle-dono...%s?expand=1). A incorporação a ion/controle-dono é a aprovação de publicação.\n' \
+            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$branch" >> "$GITHUB_STEP_SUMMARY"
