@@ -1,4 +1,4 @@
-import { arquivosDoDono } from "./arquivos.mjs";
+import { arquivosDoDono, receberVideo3D, reservarVideo3D } from "./arquivos.mjs";
 import { paginaExecutor } from "./executor-javascript.mjs";
 import { caminhosSincronismo, scriptSincronismo } from "./catalogo-sincronismo.mjs";
 import { protectOwnerRoute } from "../integracoes/ion-controle-dono.mjs";
@@ -97,6 +97,11 @@ export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
     if (path === "/executor-javascript" && request.method === "GET") return paginaExecutor();
+    const resultado3D = path.match(/^\/api\/video\/3d\/resultado\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/);
+    if (resultado3D) {
+      try { return await receberVideo3D(request, env.ION_ARQUIVOS, resultado3D[1]); }
+      catch { return new Response(null, { status: 502 }); }
+    }
     const arquivo = path.match(/^\/api\/arquivos(?:\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}))?$/);
     if (arquivo) {
       const ownerEmail = env.ION_OWNER_EMAIL?.trim().toLowerCase();
@@ -122,10 +127,11 @@ export default {
     if (path === "/api/foto") return analisarFoto(request, env);
     const consultaMudanca = path.match(/^\/api\/mudancas\/leitura\/([1-9][0-9]{0,15})$/);
     if (consultaMudanca) return statusMudanca(request, env, consultaMudanca[1]);
+    const video3D = path === "/api/video/3d";
     const bento = path === "/api/video/bento";
     const prepararMudanca = path === "/api/mudancas/leitura";
-    if (prepararMudanca || bento || path === "/api/video/transito") {
-      const workflow = prepararMudanca ? WORKFLOW_MUDANCA : bento ? "ion-animacao-bento.yml" : "ion-video-gratuito.yml";
+    if (video3D || prepararMudanca || bento || path === "/api/video/transito") {
+      const workflow = video3D ? "aion-video-3d.yml" : prepararMudanca ? WORKFLOW_MUDANCA : bento ? "ion-animacao-bento.yml" : "ion-video-gratuito.yml";
       if (request.method !== "POST") return new Response("Método indisponível.", { status: 405, headers: { Allow: "POST" } });
       const ownerEmail = env.ION_OWNER_EMAIL?.trim().toLowerCase();
       const audience = env.ION_GOOGLE_CLIENT_ID?.trim();
@@ -136,12 +142,25 @@ export default {
         owner: { issuer: GOOGLE_ISSUER, subject: ownerEmail },
         verifySession: () => verifyGoogleIdentity(request, audience),
         audit: ({ actor, ...event }) => console.warn(JSON.stringify(event)),
-        action: prepararMudanca ? "preparar_mudanca_leitura" : "solicitar_video_transito",
+        action: video3D ? "solicitar_video_3d" : prepararMudanca ? "preparar_mudanca_leitura" : "solicitar_video_transito",
         resource: "ion",
       }, async () => {
         const token = env.ION_GITHUB_ACTIONS_TOKEN;
         if (!token) return Response.json({ erro: "Integração com GitHub Actions indisponível." }, { status: 503 });
         const dispatch = { ref: "main" };
+        let pedido3D;
+        if (video3D) {
+          if (env.ION_VIDEO_3D_FREE_ENABLED !== "true" || !env.ION_ARQUIVOS) {
+            return Response.json({ erro: "O vídeo 3D aguarda ativação do workflow gratuito e do armazenamento privado." }, { status: 503 });
+          }
+          try {
+            pedido3D = await reservarVideo3D(env.ION_ARQUIVOS);
+          } catch {
+            return Response.json({ erro: "Não foi possível reservar o arquivo privado." }, { status: 502 });
+          }
+          dispatch.inputs = { id: pedido3D.id, token: pedido3D.token };
+          dispatch.return_run_details = true;
+        }
         if (prepararMudanca) {
           const body = await request.text();
           let ajuste, valor;
@@ -181,7 +200,7 @@ export default {
         }
         let idDaExecucao = null;
         let acompanhamento = "https://github.com/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/" + workflow;
-        if (prepararMudanca && result.status === 200) {
+        if ((prepararMudanca || video3D) && result.status === 200) {
           const execucao = await result.json().catch(() => null);
           if (Number.isSafeInteger(execucao?.workflow_run_id) && execucao.workflow_run_id > 0) {
             idDaExecucao = execucao.workflow_run_id;
@@ -197,6 +216,7 @@ export default {
             ? "Preparação solicitada. Confira os testes no resumo da execução."
             : "Workflow acionado. O MP4 ainda precisa ser gerado e validado.",
           acompanhamento,
+          ...(pedido3D ? { arquivo: "/?arquivo=" + pedido3D.id } : {}),
           ...(prepararMudanca ? { idDaExecucao } : {}),
         }, { status: 202 });
       });
@@ -1125,6 +1145,7 @@ function loginPage(clientId) {
             help.textContent = "Não foi possível reabrir o áudio salvo nesta conversa.";
           }
         }
+        if (entry.video3D) apresentarLinks3D(item, entry.video3D);
         if (videoValido(entry.roteiroVideo)) apresentarRoteiro(item, entry.roteiroVideo);
         if ((entry.proposta || entry.tentarProposta) && entry === chat[chat.length - 1]) apresentarAprovacao(item, entry);
         const gravacao = audiosDaSessao.get(entry);
@@ -2111,6 +2132,22 @@ function loginPage(clientId) {
       }
     }
 
+    function apresentarLinks3D(item, dados) {
+      const links = [
+        [dados.acompanhamento, "Acompanhar renderização", /^https:\\/\\/github\\.com\\/israelrodriguesnogueira-ai\\/ADL-MIDIA\\/actions\\/(?:runs\\/[0-9]+|workflows\\/aion-video-3d\\.yml)$/],
+        [dados.arquivo, "Abrir vídeo privado", /^\\/\\?arquivo=[0-9a-f-]{36}$/],
+      ];
+      for (const [href, titulo, formato] of links) {
+        if (typeof href !== "string" || !formato.test(href)) continue;
+        const link = document.createElement("a");
+        link.href = href;
+        link.textContent = titulo;
+        const linha = document.createElement("p");
+        linha.append(link);
+        item.append(linha);
+      }
+    }
+
     function apresentarRoteiro(item, roteiro) {
       const baixar = document.createElement("a");
       const url = URL.createObjectURL(new Blob([textoRoteiro(roteiro)], { type: "text/plain;charset=utf-8" }));
@@ -2513,6 +2550,28 @@ function loginPage(clientId) {
         update(photo
           ? "Foto adicionada nesta sessão. Use Baixar foto para salvar. Para analisar, pergunte o que aparece nela."
           : "Arquivo adicionado nesta sessão. Use Baixar arquivo para salvar.");
+        return;
+      }
+      const pedido3D = !file && /^(?:(?:crie|gere|produza|fa[cz]a|renderize) (?:um )?)?video 3d (?:do|de um) vestido(?: preto)?$/.test(command);
+      if (pedido3D) {
+        send.disabled = microphone.disabled = true;
+        body.textContent = "Solicitando o giro 3D do vestido…";
+        try {
+          const resposta = await fetch("/api/video/3d", {
+            method: "POST",
+            headers: { Authorization: "Bearer " + credential },
+            signal: AbortSignal.timeout(15000),
+          });
+          const dados = await resposta.json();
+          if (!resposta.ok) throw new Error(dados.erro || "Não foi possível iniciar a produção 3D.");
+          record.video3D = { acompanhamento: dados.acompanhamento, arquivo: dados.arquivo };
+          update("Renderização solicitada. Acompanhe pelo GitHub. O link privado abre o vídeo assim que ele for salvo.");
+          apresentarLinks3D(item, record.video3D);
+        } catch (erro) {
+          update(erro.message);
+        } finally {
+          send.disabled = microphone.disabled = false;
+        }
         return;
       }
       const bentoRequest = /\\b(?:crie|cria|criar|faca|faz|fazer|gere|gerar|anime|animar|produza|quero)\\b/.test(command)

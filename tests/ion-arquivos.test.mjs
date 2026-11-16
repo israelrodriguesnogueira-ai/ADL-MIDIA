@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import worker from "../worker-ion/index.mjs";
-import { arquivosDoDono } from "../worker-ion/arquivos.mjs";
+import { arquivosDoDono, receberVideo3D, reservarVideo3D } from "../worker-ion/arquivos.mjs";
 
 const origin = "https://aion.example.test";
 const request = (path, init) => new Request(origin + path, init);
@@ -42,4 +42,28 @@ test("limite real do upload é aplicado mesmo sem Content-Length", async () => {
   const r = await arquivosDoDono(request("/api/arquivos", { method: "POST", body: corpo,
     headers: { "Content-Type": "video/mp4" } }), { put() { assert.fail("Arquivo excedeu o limite"); } });
   assert.equal(r.status, 413);
+});
+
+test("renderização salva no endereço reservado e token deixa de funcionar após entrega", async () => {
+  const objects = new Map();
+  const bucket = {
+    async put(key, body, options) {
+      if (options.onlyIf && objects.has(key)) return null;
+      objects.set(key, { body, text: async () => body, ...options });
+      return { key };
+    },
+    async get(key) { return objects.get(key); },
+    async delete(key) { objects.delete(key); },
+  };
+  const { id, token } = await reservarVideo3D(bucket);
+  const original = Uint8Array.of(0, 0, 0, 24, 102, 116, 121, 112);
+  const route = "/api/video/3d/resultado/" + id;
+  const callback = value => request(route, { method: "POST", body: original,
+    headers: { Authorization: "Bearer " + value, "Content-Type": "video/mp4" } });
+  const config = { ION_ARQUIVOS: bucket };
+  assert.equal((await worker.fetch(callback("a".repeat(72)), config)).status, 403);
+  assert.equal((await worker.fetch(callback(token), config)).status, 201);
+  assert.equal((await receberVideo3D(callback(token), bucket, id)).status, 403);
+  const download = await arquivosDoDono(request("/api/arquivos/" + id), bucket, id);
+  assert.deepEqual(new Uint8Array(await download.arrayBuffer()), original);
 });
