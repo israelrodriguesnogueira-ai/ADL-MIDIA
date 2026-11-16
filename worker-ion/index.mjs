@@ -14,14 +14,12 @@ function montarContextoDaConversa(conversa) {
   const anteriores = mensagens.slice(0, -LIMITE_MENSAGENS_RECENTES);
   const inicio = anteriores.slice(0, LIMITE_MENSAGENS_ANTERIORES / 2);
   const retomada = anteriores.slice(inicio.length).slice(-LIMITE_MENSAGENS_ANTERIORES / 2);
-  const formatar = (entrada, limite) => ({
+  const selecionadas = inicio.concat(retomada, recentes);
+  const limiteDasAnteriores = inicio.length + retomada.length;
+  return selecionadas.map((entrada, indice) => ({
     role: entrada.who === "Você" ? "user" : "assistant",
-    content: entrada.text.trim().slice(0, limite),
-  });
-  return [
-    ...inicio.concat(retomada).map(entrada => formatar(entrada, 500)),
-    ...recentes.map(entrada => formatar(entrada, LIMITE_TEXTO_CONVERSA)),
-  ];
+    content: entrada.text.trim().slice(0, indice < limiteDasAnteriores ? 500 : LIMITE_TEXTO_CONVERSA),
+  }));
 }
 const LIMITE_PERGUNTA_FOTO_CODIFICADA = 6000;
 
@@ -2080,6 +2078,7 @@ function loginPage(clientId) {
       const { item, body, ouvir, acoes, executarCodigo } = message("Ion", "Entendendo seu pedido…", record);
       current.push(record);
       const update = (reply) => {
+        if (typeof reply !== "string" || !reply.trim()) reply = "O Aion recebeu uma resposta vazia. Use Repetir pedido para tentar novamente.";
         const pertoDoFim = log.scrollHeight - log.scrollTop - log.clientHeight <= 48;
         body.textContent = reply;
         if (ouvir) ouvir.hidden = !reply.trim();
@@ -2091,7 +2090,7 @@ function loginPage(clientId) {
       };
       const pedidoInterface = normalizarPedido(request).replace(/^(?:aion|ion)[, ]+/, "");
       const ajustesInterface = [
-        ["velocidade", /^prepar(?:e|ar) a velocidade padrao da leitura em (0[.,]75|1(?:[.,](?:25|5))?|2)\\s*[x×]?\\s*[.!]?$/],
+        ["velocidade", /^prepar(?:e|ar) a velocidade (?:para )?padrao (?:da|de) leitura (?:em|para|de) (0[.,]75|1(?:[.,](?:25|5))?|2)\\s*[x×]?\\s*[.!]?$/],
         ["icones", /^prepar(?:e|ar) (?:os icones|o tamanho dos icones) em (14|16|18|20)\\s*(?:px)?\\s*[.!]?$/],
         ["historico", /^prepar(?:e|ar) o historico lateral (?:a partir de|em) (800|900|1024)\\s*(?:px)?\\s*[.!]?$/],
       ];
@@ -2100,11 +2099,13 @@ function loginPage(clientId) {
         .find(opcao => opcao.valor);
       if (ajusteSolicitado) {
         send.disabled = microphone.disabled = true;
+        body.textContent = "Identifiquei o ajuste. Enviando para preparação…";
         try {
           const response = await fetch("/api/mudancas/leitura", {
             method: "POST",
             headers: { Authorization: "Bearer " + credential, "Content-Type": "application/json" },
             body: JSON.stringify({ ajuste: ajusteSolicitado.ajuste, valor: ajusteSolicitado.valor.replace(",", ".") }),
+            signal: AbortSignal.timeout(15000),
           });
           const payload = await response.json();
           if (!response.ok) {
@@ -2495,13 +2496,13 @@ function loginPage(clientId) {
         /\\b(?:crie|cria|criar|faca|faz|fazer|gere|gera|gerar|produza|produzir|quero|monte|planeje|anim[eia])\\b.*\\b(?:video|short|roteiro|animacao)\\b/.test(command)
         || videoValido(respostaAnteriorDoProjeto?.roteiroVideo));
       if (recuperarJingle || projetoDeVideo || (!videoRequest && !trafficRequest && !bentoRequest)) {
-        const mensagens = montarContextoDaConversa(current);
         send.disabled = microphone.disabled = true;
         const sinalConversa = AbortSignal.timeout(45000);
         const avisoDeEspera = setTimeout(() => {
           body.textContent = "Pedido enviado. Aguardando o núcleo de conversa…";
         }, 5000);
         try {
+          const mensagens = montarContextoDaConversa(current);
           const ultimaPartitura = findLastMessage(entrada => partituraValida(entrada.partitura))?.partitura;
           const ultimoVideo = findLastMessage(entrada => videoValido(entrada.roteiroVideo))?.roteiroVideo;
           const response = await fetch("/api/conversa", {
