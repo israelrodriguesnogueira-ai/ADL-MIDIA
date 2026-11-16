@@ -2146,6 +2146,7 @@ function loginPage(clientId) {
         link.textContent = titulo;
         const linha = document.createElement("p");
         linha.append(link);
+        if (href === dados.arquivo) linha.append(" ", botaoCopiarLinkPrivado(link));
         item.append(linha);
       }
       if (typeof dados.arquivo !== "string" || !/^\\/\\?arquivo=[0-9a-f-]{36}$/.test(dados.arquivo)) return;
@@ -2583,7 +2584,7 @@ function loginPage(clientId) {
           : "Arquivo adicionado nesta sessão. Use Baixar arquivo para salvar.");
         return;
       }
-      const pedido3D = !file && /^(?:(?:crie|gere|produza|fa[cz]a|renderize) (?:um )?)?video 3d (?:do|de um) vestido(?: preto)?$/.test(command);
+      const pedido3D = !file && /^(?:(?:crie|gere|produza|fa[cz]a|renderize) (?:(?:um|o) )?)?video 3d (?:do|de um) vestido(?: preto)?$/.test(command);
       if (pedido3D) {
         send.disabled = microphone.disabled = true;
         body.textContent = "Solicitando o giro 3D do vestido…";
@@ -2963,6 +2964,21 @@ function loginPage(clientId) {
     }
   }
 
+  function botaoCopiarLinkPrivado(link) {
+    const botao = document.createElement("button");
+    botao.type = "button";
+    botao.textContent = "Copiar link privado";
+    botao.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(link.href);
+        botao.textContent = "Link copiado";
+      } catch {
+        botao.textContent = "Não copiou. Toque e segure no link.";
+      }
+    };
+    return botao;
+  }
+
   async function salvarVideoPrivado(blob, credential) {
     const resposta = await fetch("/api/arquivos", {
       method: "POST",
@@ -2977,7 +2993,9 @@ function loginPage(clientId) {
     const link = document.createElement("a");
     link.href = dados.caminho;
     link.textContent = "Abrir link privado";
-    return link;
+    const grupo = document.createDocumentFragment();
+    grupo.append(link, " ", botaoCopiarLinkPrivado(link));
+    return grupo;
   }
 
   function showPanel(areas, credential) {
