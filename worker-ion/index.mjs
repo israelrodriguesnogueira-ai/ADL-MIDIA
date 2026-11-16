@@ -32,8 +32,9 @@ export default {
     if (path === "/api/conversa") return responderConversa(request, env);
     if (path === "/api/foto") return analisarFoto(request, env);
     const bento = path === "/api/video/bento";
-    if (bento || path === "/api/video/transito") {
-      const workflow = bento ? "ion-animacao-bento.yml" : "ion-video-gratuito.yml";
+    const prepararMudanca = path === "/api/mudancas/leitura";
+    if (prepararMudanca || bento || path === "/api/video/transito") {
+      const workflow = prepararMudanca ? "ion-preparar-mudanca.yml" : bento ? "ion-animacao-bento.yml" : "ion-video-gratuito.yml";
       if (request.method !== "POST") return new Response("Método indisponível.", { status: 405, headers: { Allow: "POST" } });
       const ownerEmail = env.ION_OWNER_EMAIL?.trim().toLowerCase();
       const audience = env.ION_GOOGLE_CLIENT_ID?.trim();
@@ -44,11 +45,23 @@ export default {
         owner: { issuer: GOOGLE_ISSUER, subject: ownerEmail },
         verifySession: () => verifyGoogleIdentity(request, audience),
         audit: ({ actor, ...event }) => console.warn(JSON.stringify(event)),
-        action: "solicitar_video_transito",
+        action: prepararMudanca ? "preparar_mudanca_leitura" : "solicitar_video_transito",
         resource: "ion",
       }, async () => {
         const token = env.ION_GITHUB_ACTIONS_TOKEN;
-        if (!token) return Response.json({ erro: "Integração de vídeo não configurada." }, { status: 503 });
+        if (!token) return Response.json({ erro: "Integração com GitHub Actions indisponível." }, { status: 503 });
+        const dispatch = { ref: "main" };
+        if (prepararMudanca) {
+          let velocidade;
+          const body = await request.text();
+          try {
+            if (body.length <= 80) velocidade = JSON.parse(body)?.velocidade;
+          } catch {}
+          if (!["0.75", "1", "1.25", "1.5", "2"].includes(velocidade)) {
+            return Response.json({ erro: "Velocidade inválida." }, { status: 400 });
+          }
+          dispatch.inputs = { velocidade };
+        }
         let result;
         try {
           result = await fetch("https://api.github.com/repos/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/" + workflow + "/dispatches", {
@@ -59,19 +72,21 @@ export default {
               "X-GitHub-Api-Version": "2022-11-28",
               "User-Agent": "ION-Owner-Worker",
             },
-            body: JSON.stringify({ ref: "main" }),
+            body: JSON.stringify(dispatch),
             signal: AbortSignal.timeout(10000),
           });
         } catch {
-          return Response.json({ erro: "Não foi possível acionar o gerador." }, { status: 502 });
+          return Response.json({ erro: "Não foi possível acionar a tarefa." }, { status: 502 });
         }
         if (result.status !== 204) {
-          console.warn(JSON.stringify({ event: "ion.video_dispatch_failed", status: result.status }));
+          console.warn(JSON.stringify({ event: "ion.workflow_dispatch_failed", workflow, status: result.status }));
           return Response.json({ erro: "O GitHub não aceitou a solicitação.", codigo: result.status }, { status: 502 });
         }
         return Response.json({
           status: "solicitado",
-          detalhe: "Workflow acionado. O MP4 ainda precisa ser gerado e validado.",
+          detalhe: prepararMudanca
+            ? "Preparação solicitada. Confira os testes no resumo da execução."
+            : "Workflow acionado. O MP4 ainda precisa ser gerado e validado.",
           acompanhamento: "https://github.com/israelrodriguesnogueira-ai/ADL-MIDIA/actions/workflows/" + workflow,
         }, { status: 202 });
       });
@@ -401,7 +416,7 @@ async function responderConversa(request, env) {
             + "A interface do Aion pode ler respostas em voz alta. Quando perguntarem como ouvir uma resposta, indique o botão de alto-falante abaixo dela ou o comando \"Leia a última resposta\". Nunca afirme que a reprodução começou sem confirmação da interface. "
             + "Para manutenção automotiva, diferencie correia dentada, que sincroniza virabrequim e comando de válvulas, da correia de acessórios, que pode acionar o alternador. "
             + "Para marcas de sincronismo, torques e procedimentos específicos, só dê instruções fundamentadas em documentação técnica aplicável. Se ela não estiver disponível na conversa, peça modelo, ano, código do motor e o manual ou a página relevante. "
-            + "Só confirme ações após receber o resultado do sistema. Blocos marcados como javascript ou js podem ser executados pelo usuário no navegador com o botão Executar JavaScript. Quando pedirem código executável no chat, use JavaScript independente, sem bibliotecas ou rede, e mostre o resultado com console.log ou return. Se pedirem para instalar dependências ou executar testes de um projeto, informe que esse executor roda somente JavaScript local. Nunca invente logs, artefatos, links de download ou resultados de testes. Você não tem ferramenta para publicar mudanças no próprio Aion. Se pedirem para implantar uma nova voz ou alterar a interface, explique o que é possível configurar agora e só confirme mudanças retornadas pelo sistema. Para trocar a voz de leitura disponível, indique Histórico de conversas → Voz de leitura.";
+            + "Só confirme ações após receber o resultado do sistema. Blocos marcados como javascript ou js podem ser executados pelo usuário no navegador com o botão Executar JavaScript. Quando pedirem código executável no chat, use JavaScript independente, sem bibliotecas ou rede, e mostre o resultado com console.log ou return. Se pedirem para instalar dependências ou executar testes de um projeto, informe que esse executor roda somente JavaScript local. Nunca invente logs, artefatos, links de download ou resultados de testes. O comando “Prepare a velocidade padrão da leitura em 1,25x” solicita um ajuste para revisão. A publicação requer aprovação no GitHub. Se pedirem para implantar uma nova voz ou alterar a interface, explique o que é possível configurar agora e só confirme mudanças retornadas pelo sistema. Para trocar a voz de leitura disponível, indique Histórico de conversas → Voz de leitura.";
     const instrucaoProducao = instrucaoMusical + instrucaoVideo
       + " Entregue somente a proposta em JSON válido. O Aion usa a proposta para gerar um arquivo após a aprovação. "
       + "Se o pedido for de produção, entregue todos os campos do formato pedido, sem código de exemplo ou tutoriais."
@@ -1872,6 +1887,36 @@ function loginPage(clientId) {
         if (pertoDoFim) irParaUltimaMensagem();
         saveHistory();
       };
+      const pedidoDeMudanca = !file && /^(?:(?:aion|ion)[, ]+)?prepar(?:e|ar) a velocidade padrao da leitura em (0[.,]75|1(?:[.,](?:25|5))?|2)\\s*[x×]?\\s*[.!]?$/i
+        .exec(normalizarPedido(request));
+      if (pedidoDeMudanca) {
+        send.disabled = microphone.disabled = true;
+        try {
+          const response = await fetch("/api/mudancas/leitura", {
+            method: "POST",
+            headers: { Authorization: "Bearer " + credential, "Content-Type": "application/json" },
+            body: JSON.stringify({ velocidade: pedidoDeMudanca[1].replace(",", ".") }),
+          });
+          const payload = await response.json();
+          if (!response.ok) {
+            update(payload.erro || "O GitHub não aceitou a preparação.");
+            return;
+          }
+          update("Solicitei a preparação ao GitHub. Veja a execução mais recente para conferir os testes e abrir a proposta para revisão.");
+          const acompanhamento = document.createElement("a");
+          acompanhamento.href = payload.acompanhamento;
+          acompanhamento.textContent = "Acompanhar preparação no GitHub";
+          acompanhamento.target = "_blank";
+          acompanhamento.rel = "noopener noreferrer";
+          item.append(acompanhamento);
+          irParaUltimaMensagem();
+        } catch {
+          update("Falha de conexão ao solicitar a preparação.");
+        } finally {
+          send.disabled = microphone.disabled = false;
+        }
+        return;
+      }
       const versaoAnterior = findLastMessage(entrada => Number.isInteger(entrada.versaoAudio))?.versaoAudio || 0;
       const respostaAnteriorDoProjeto = current[current.length - 3];
       const ultimaProposta = respostaAnteriorDoProjeto?.proposta || respostaAnteriorDoProjeto?.tentarProposta
