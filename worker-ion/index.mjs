@@ -401,7 +401,7 @@ async function responderConversa(request, env) {
             + "A interface do Aion pode ler respostas em voz alta. Quando perguntarem como ouvir uma resposta, indique o botão de alto-falante abaixo dela ou o comando \"Leia a última resposta\". Nunca afirme que a reprodução começou sem confirmação da interface. "
             + "Para manutenção automotiva, diferencie correia dentada, que sincroniza virabrequim e comando de válvulas, da correia de acessórios, que pode acionar o alternador. "
             + "Para marcas de sincronismo, torques e procedimentos específicos, só dê instruções fundamentadas em documentação técnica aplicável. Se ela não estiver disponível na conversa, peça modelo, ano, código do motor e o manual ou a página relevante. "
-            + "Só confirme ações após receber o resultado do sistema. Blocos marcados como javascript ou js podem ser executados pelo usuário no navegador com o botão Executar JavaScript. Quando pedirem código executável no chat, use JavaScript independente, sem bibliotecas ou rede, e mostre o resultado com console.log ou return. Se pedirem para instalar dependências ou executar testes de um projeto, informe que esse executor roda somente JavaScript local. Nunca invente logs, artefatos, links de download ou resultados de testes.";
+            + "Só confirme ações após receber o resultado do sistema. Blocos marcados como javascript ou js podem ser executados pelo usuário no navegador com o botão Executar JavaScript. Quando pedirem código executável no chat, use JavaScript independente, sem bibliotecas ou rede, e mostre o resultado com console.log ou return. Se pedirem para instalar dependências ou executar testes de um projeto, informe que esse executor roda somente JavaScript local. Nunca invente logs, artefatos, links de download ou resultados de testes. Você não tem ferramenta para publicar mudanças no próprio Aion. Se pedirem para implantar uma nova voz ou alterar a interface, explique o que é possível configurar agora e só confirme mudanças retornadas pelo sistema. Para trocar a voz de leitura disponível, indique Histórico de conversas → Voz de leitura.";
     const instrucaoProducao = instrucaoMusical + instrucaoVideo
       + " Entregue somente a proposta em JSON válido. O Aion usa a proposta para gerar um arquivo após a aprovação. "
       + "Se o pedido for de produção, entregue todos os campos do formato pedido, sem código de exemplo ou tutoriais."
@@ -706,7 +706,11 @@ function loginPage(clientId) {
   .ion-resposta-acoes summary { display: flex; list-style: none; }
   .ion-resposta-acoes summary::-webkit-details-marker { display: none; }
   .ion-resposta-acoes button:hover, .ion-resposta-acoes [aria-pressed="true"] { background: #243a55; color: #f3f6fc; }
-  .ion-resposta-acoes details[open] button { display: flex; margin-top: .25rem; }
+  .ion-resposta-acoes svg { width: 16px; height: 16px; }
+  .ion-acoes-dialog { width: min(22rem, calc(100% - 2rem)); max-height: 75dvh; box-sizing: border-box; padding: .75rem; border: 1px solid #3b4b66; border-radius: 1rem; background: #19253a; color: #f3f6fc; }
+  .ion-acoes-dialog::backdrop { background: #0009; }
+  .ion-acoes-dialog button { width: 100%; text-align: left; justify-content: start; padding: 0 .75rem; }
+  #leitura-velocidade { min-height: 44px; max-width: 4rem; background: #19253a; color: inherit; border: 0; font: inherit; }
   .ion-resposta-votos { display: inline-flex; }
 </style>
 <main>
@@ -725,6 +729,10 @@ function loginPage(clientId) {
       <p id="leitura-status" role="status"></p>
       <button id="leitura-voltar" type="button" aria-label="Voltar 15 segundos" title="Voltar 15 segundos" hidden>−15</button>
       <button id="leitura-avancar" type="button" aria-label="Avançar 15 segundos" title="Avançar 15 segundos" hidden>+15</button>
+      <select id="leitura-velocidade" aria-label="Velocidade da leitura" hidden>
+        <option value="0.75">0,75×</option><option value="1" selected>1×</option><option value="1.25">1,25×</option><option value="1.5">1,5×</option><option value="2">2×</option>
+      </select>
+      <button id="leitura-pausa" type="button" aria-label="Pausar leitura" hidden>Ⅱ</button>
       <button id="leitura-fechar" type="button" aria-label="Encerrar leitura" title="Encerrar leitura">×</button>
     </section>
     <dialog id="ion-menu" aria-labelledby="historico-titulo">
@@ -733,7 +741,7 @@ function loginPage(clientId) {
       <button id="limpar-ion" type="button">Limpar histórico local</button>
       <details><summary>Áreas do Aion</summary><ul id="areas"></ul></details>
       <div id="preferencia-voz-ion" hidden>
-        <label for="voz-leitura-ion">Voz do aparelho (opcional)</label>
+        <label for="voz-leitura-ion">Voz de leitura</label>
         <select id="voz-leitura-ion"></select>
       </div>
       <button id="abrir-seguranca" type="button">Segurança Wi-Fi e Bluetooth</button>
@@ -1301,17 +1309,22 @@ function loginPage(clientId) {
     const seletorVoz = get("voz-leitura-ion");
     const chaveVoz = "ion-voz-leitura";
     const vozesBrasileiras = () => leitor?.getVoices().filter(voz => /^pt[-_]br$/i.test(voz.lang)) ?? [];
-    const vozSalva = () => {
-      try { return localStorage.getItem(chaveVoz); } catch { return null; }
-    };
+    let vozEscolhida = "faber";
+    try { vozEscolhida = localStorage.getItem(chaveVoz) || "faber"; } catch {}
     const preencherVozes = () => {
       const vozes = vozesBrasileiras();
       get("preferencia-voz-ion").hidden = false;
-      seletorVoz.replaceChildren(new Option("Padrão do aparelho", ""), ...vozes.map(voz => new Option(voz.name, voz.voiceURI)));
-      seletorVoz.value = vozes.some(voz => voz.voiceURI === vozSalva()) ? vozSalva() : "";
+      seletorVoz.replaceChildren(new Option("Faber · voz neural", "faber"));
+      if (leitor && window.SpeechSynthesisUtterance) {
+        seletorVoz.append(new Option("Padrão do aparelho", "aparelho"),
+          ...vozes.map(voz => new Option(voz.name, voz.voiceURI)));
+      }
+      seletorVoz.value = Array.from(seletorVoz.options).some(opcao => opcao.value === vozEscolhida) ? vozEscolhida : "faber";
     };
     seletorVoz.onchange = () => {
-      try { localStorage.setItem(chaveVoz, seletorVoz.value); } catch {}
+      vozEscolhida = seletorVoz.value;
+      pararLeitura();
+      try { localStorage.setItem(chaveVoz, vozEscolhida); } catch {}
     };
     preencherVozes();
     leitor?.addEventListener?.("voiceschanged", preencherVozes);
@@ -1323,6 +1336,16 @@ function loginPage(clientId) {
     const avancarLeitura = get("leitura-avancar");
     voltarLeitura.onclick = () => deslocarLeitura(-15);
     avancarLeitura.onclick = () => deslocarLeitura(15);
+    const velocidadeLeitura = get("leitura-velocidade");
+    const pausaLeitura = get("leitura-pausa");
+    velocidadeLeitura.onchange = () => {
+      if (leitura?.audio) leitura.audio.playbackRate = Number(velocidadeLeitura.value);
+    };
+    pausaLeitura.onclick = () => {
+      if (!leitura?.fala) return;
+      if (leitor.paused) leitor.resume();
+      else leitor.pause();
+    };
     get("leitura-fechar").onclick = pararLeitura;
     let leitura;
     function deslocarLeitura(segundos) {
@@ -1339,9 +1362,9 @@ function loginPage(clientId) {
       if (!leitura) return;
       const anterior = leitura;
       leitura = null;
-      barraLeitura.hidden = voltarLeitura.hidden = avancarLeitura.hidden = true;
-      anterior.botao.textContent = "🔊";
-      anterior.botao.setAttribute("aria-label", "Ouvir resposta");
+      barraLeitura.hidden = voltarLeitura.hidden = avancarLeitura.hidden = velocidadeLeitura.hidden = pausaLeitura.hidden = true;
+      iconeResposta(anterior.botao, "ouvir");
+      anterior.botao.setAttribute("aria-label", "Ler texto da resposta em voz alta");
       if (anterior.audio) {
         anterior.audio.pause();
         anterior.audio.remove();
@@ -1387,6 +1410,17 @@ function loginPage(clientId) {
       document.body.append(quadro);
     }
 
+    function iconeResposta(botao, nome) {
+      const desenhos = {
+        ouvir: '<path d="M3 9h4l5-4v14l-5-4H3zM16 9a4 4 0 0 1 0 6m3-9a8 8 0 0 1 0 12"/>',
+        parar: '<rect x="6" y="6" width="12" height="12" rx="1" fill="currentColor" stroke="none"/>',
+        subir: '<path d="M12 15V3m-4 4 4-4 4 4M5 13v7h14v-7"/>',
+        positivo: '<path d="M7 10v10H3V10zm0 8 3 2h8a2 2 0 0 0 2-2l1-7a2 2 0 0 0-2-2h-4l1-4a2 2 0 0 0-2-2l-4 7-3 2"/>',
+        negativo: '<path transform="rotate(180 12 12)" d="M7 10v10H3V10zm0 8 3 2h8a2 2 0 0 0 2-2l1-7a2 2 0 0 0-2-2h-4l1-4a2 2 0 0 0-2-2l-4 7-3 2"/>',
+      };
+      botao.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + desenhos[nome] + '</svg>';
+    }
+
     function message(who, content, entrada) {
       const item = document.createElement("li");
       item.className = who === "Você" ? "msg-user" : "msg-ion";
@@ -1399,22 +1433,22 @@ function loginPage(clientId) {
       if (who === "Ion") {
         ouvir = document.createElement("button");
         ouvir.type = "button";
-        ouvir.textContent = "🔊";
+        iconeResposta(ouvir, "ouvir");
         ouvir.title = "Ler texto da resposta em voz alta";
         ouvir.setAttribute("aria-label", "Ler texto da resposta em voz alta");
         ouvir.hidden = !content.trim() || content === "Entendendo seu pedido…";
-        const reproduzir = async (usarVozLocal = false) => {
+        const reproduzir = async (usarVozLocal = seletorVoz.value !== "faber") => {
           const jaLendo = leitura?.botao === ouvir;
           pararLeitura();
           if (jaLendo) return;
           const texto = body.textContent.replace(/https?:\\/\\/\\S+/g, "").replace(/[*_#]/g, "").trim();
           if (!texto) return;
           const vozes = vozesBrasileiras();
-          const preferida = vozes.find(v => v.voiceURI === vozSalva());
+          const preferida = vozes.find(v => v.voiceURI === seletorVoz.value);
           if (!usarVozLocal) {
             const sessao = { botao: ouvir };
             leitura = sessao;
-            ouvir.textContent = "■";
+            iconeResposta(ouvir, "parar");
             ouvir.setAttribute("aria-label", "Parar leitura");
             iniciarLeitura("Preparando a leitura…");
             let prazo;
@@ -1436,6 +1470,8 @@ function loginPage(clientId) {
               sessao.url = URL.createObjectURL(audioWav);
               sessao.audio = audio;
               audio.controls = true;
+              audio.playbackRate = Number(velocidadeLeitura.value);
+              velocidadeLeitura.hidden = false;
               audio.src = sessao.url;
               statusLeitura.hidden = true;
               barraLeitura.insertBefore(audio, voltarLeitura);
@@ -1481,8 +1517,19 @@ function loginPage(clientId) {
           fala.lang = "pt-BR";
           if (preferida) fala.voice = preferida;
           leitura = { fala, botao: ouvir };
-          iniciarLeitura("Lendo a resposta…");
-          ouvir.textContent = "■";
+          iniciarLeitura(preferida?.name || "Voz do aparelho");
+          pausaLeitura.hidden = false;
+          pausaLeitura.textContent = "Ⅱ";
+          pausaLeitura.setAttribute("aria-label", "Pausar leitura");
+          fala.onpause = () => {
+            pausaLeitura.textContent = "▶";
+            pausaLeitura.setAttribute("aria-label", "Continuar leitura");
+          };
+          fala.onresume = () => {
+            pausaLeitura.textContent = "Ⅱ";
+            pausaLeitura.setAttribute("aria-label", "Pausar leitura");
+          };
+          iconeResposta(ouvir, "parar");
           ouvir.setAttribute("aria-label", "Parar leitura");
           const encerrar = () => {
             if (leitura?.fala !== fala) return;
@@ -1496,7 +1543,7 @@ function loginPage(clientId) {
           help.textContent = "";
           leitor.speak(fala);
         };
-        leitoresPorResposta.set(entrada, () => reproduzir(Boolean(leitor && window.SpeechSynthesisUtterance)));
+        leitoresPorResposta.set(entrada, () => reproduzir());
         ouvir.onclick = () => reproduzir();
       }
       let acoes, executarCodigo;
@@ -1538,24 +1585,25 @@ function loginPage(clientId) {
         grupoVotos.setAttribute("role", "group");
         grupoVotos.setAttribute("aria-label", "Avaliar resposta");
         acoes.append(grupoVotos);
-        const votos = [["👍", "Gostei", "positivo"], ["👎", "Não gostei", "negativo"]];
+        const votos = [["Gostei", "positivo"], ["Não gostei", "negativo"]];
         const atualizarVotos = () => {
           for (const [controle, valor] of controles) {
             controle.setAttribute("aria-pressed", String(entrada.voto === valor));
           }
         };
-        const controles = votos.map(([icone, titulo, valor]) => {
-          const controle = botao(icone, titulo, () => {
+        const controles = votos.map(([titulo, valor]) => {
+          const controle = botao("", titulo, () => {
             entrada.voto = entrada.voto === valor ? null : valor;
             atualizarVotos();
             saveHistory();
           });
+          iconeResposta(controle, valor);
           grupoVotos.append(controle);
           return [controle, valor];
         });
         atualizarVotos();
         if (ouvir) acoes.append(ouvir);
-        acoes.append(botao("↑", "Compartilhar resposta", async () => {
+        const compartilhar = botao("", "Compartilhar resposta", async () => {
           const texto = body.textContent.trim();
           if (!texto) return;
           try {
@@ -1569,12 +1617,17 @@ function loginPage(clientId) {
           } catch (erro) {
             if (erro?.name !== "AbortError") help.textContent = "Não foi possível compartilhar. Use Copiar resposta.";
           }
-        }));
-        const opcoes = document.createElement("details");
-        const resumo = document.createElement("summary");
-        resumo.textContent = "⋯";
-        resumo.setAttribute("aria-label", "Mais ações da resposta");
-        opcoes.append(resumo);
+        });
+        iconeResposta(compartilhar, "subir");
+        acoes.append(compartilhar);
+        const opcoes = document.createElement("dialog");
+        opcoes.className = "ion-acoes-dialog";
+        opcoes.setAttribute("aria-label", "Mais ações da resposta");
+        const resumo = botao("⋯", "Mais ações da resposta", () => opcoes.showModal());
+        resumo.setAttribute("aria-haspopup", "dialog");
+        opcoes.addEventListener("click", evento => {
+          if (evento.target.closest("button")) opcoes.close();
+        }, true);
         const pedidoDaResposta = () => {
           const indice = current.indexOf(entrada);
           return indice < 0 ? "" : current.slice(0, indice).reverse().find(msg => msg.who === "Você")?.text || "";
@@ -1589,7 +1642,6 @@ function loginPage(clientId) {
           botao("Repetir pedido", "Repetir o pedido desta resposta", () => {
             const pedido = pedidoDaResposta();
             if (!pedido || send.disabled) return;
-            opcoes.open = false;
             input.value = pedido;
             form.requestSubmit();
           }),
@@ -1608,7 +1660,6 @@ function loginPage(clientId) {
             link.click();
             link.remove();
             setTimeout(() => URL.revokeObjectURL(url), 30000);
-            opcoes.open = false;
           }),
           botao("Buscar na web", "Abrir busca na web", () => {
             const termo = window.prompt("Revise os termos que serão enviados ao Google.", pedidoDaResposta());
@@ -1616,10 +1667,10 @@ function loginPage(clientId) {
             const busca = new URL("https://www.google.com/search");
             busca.searchParams.set("q", termo.trim());
             window.open(busca.href, "_blank", "noopener,noreferrer");
-            opcoes.open = false;
-          })
+          }),
+          botao("Fechar", "Fechar ações da resposta", () => {})
         );
-        acoes.append(opcoes);
+        acoes.append(resumo, opcoes);
         item.append(acoes, resultadoCodigo);
       }
       log.append(item);
