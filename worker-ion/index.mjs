@@ -412,7 +412,7 @@ async function responderConversa(request, env) {
         + (ultimaPartitura ? " A última versão é " + JSON.stringify(ultimaPartitura) + "." : "")
       : "";
     const instrucaoConversa = "Você é o Aion. Responda em português brasileiro. Em pedidos de continuidade, use o projeto que o usuário indicou, preserve as decisões dele e retome a última etapa sustentada pelo histórico. Distinga etapas concluídas de propostas e use as correções mais recentes. Peça só o dado que faltar para avançar. ";
-    const orientacaoGeral = "Responda ao objetivo do usuário com o resultado solicitado. Gere código somente se ele pedir explicitamente código, programação ou um arquivo-fonte. Se o usuário pedir um arquivo final ou a execução de uma tarefa, use a capacidade disponível. Quando faltar uma informação indispensável, faça uma pergunta curta e específica. Quando pedirem código, use um bloco identificado pela linguagem. "
+    const orientacaoGeral = "Comece pelo resultado solicitado. Em perguntas simples, responda em poucas frases. Quando pedirem detalhes ou um artefato, entregue o conteúdo necessário. Gere código somente se ele pedir explicitamente código, programação ou um arquivo-fonte. Se o usuário pedir um arquivo final ou a execução de uma tarefa, use a capacidade disponível. Quando faltar uma informação indispensável, faça uma pergunta curta e específica. Quando pedirem código, use um bloco identificado pela linguagem. "
             + "A interface do Aion pode ler respostas em voz alta. Quando perguntarem como ouvir uma resposta, indique o botão de alto-falante abaixo dela ou o comando \"Leia a última resposta\". Nunca afirme que a reprodução começou sem confirmação da interface. "
             + "Para manutenção automotiva, diferencie correia dentada, que sincroniza virabrequim e comando de válvulas, da correia de acessórios, que pode acionar o alternador. "
             + "Para marcas de sincronismo, torques e procedimentos específicos, só dê instruções fundamentadas em documentação técnica aplicável. Se ela não estiver disponível na conversa, peça modelo, ano, código do motor e o manual ou a página relevante. "
@@ -700,6 +700,7 @@ function loginPage(clientId) {
   #leitura-ion:not([hidden]) { display: flex; flex-shrink: 0; align-items: center; gap: .25rem; padding: .25rem; border-radius: 1rem; background: #19253a; }
   #leitura-ion audio { flex: 1; min-width: 0; height: 44px; }
   #leitura-ion button { justify-content: center; flex: 0 0 44px; padding: 0; border: 0; border-radius: .75rem; background: transparent; color: inherit; }
+  #leitura-ion #leitura-usar-aparelho { flex: 0 1 auto; padding: 0 .5rem; font-size: .8rem; }
   #leitura-status { flex: 1; min-width: 0; margin: 0; padding: .25rem .5rem; font-size: .88rem; overflow-wrap: anywhere; }
   #comando-ion { padding-bottom: max(.6rem, env(safe-area-inset-bottom)); }
   #anexo-status:empty, #ajuda-ion:empty { display: none; }
@@ -748,6 +749,7 @@ function loginPage(clientId) {
         <option value="0.75">0,75×</option><option value="1" selected>1×</option><option value="1.25">1,25×</option><option value="1.5">1,5×</option><option value="2">2×</option>
       </select>
       <button id="leitura-pausa" type="button" aria-label="Pausar leitura" hidden>Ⅱ</button>
+      <button id="leitura-usar-aparelho" type="button" hidden>Usar voz do aparelho</button>
       <button id="leitura-fechar" type="button" aria-label="Encerrar leitura" title="Encerrar leitura">×</button>
     </section>
     <dialog id="ion-menu" aria-labelledby="historico-titulo">
@@ -1220,9 +1222,11 @@ function loginPage(clientId) {
     const microphone = get("voz-ion");
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition;
+    let prazoDitado;
     const microphoneLabel = microphone.getAttribute("aria-label");
     const iconeMicrofone = microphone.firstElementChild.cloneNode(true);
     function resetDictation() {
+      clearTimeout(prazoDitado);
       recognition = null;
       microphone.replaceChildren(iconeMicrofone.cloneNode(true));
       microphone.setAttribute("aria-pressed", "false");
@@ -1257,7 +1261,15 @@ function loginPage(clientId) {
         if (finishing) return;
         finishing = true;
         help.textContent = "Concluindo ditado…";
-        session.stop();
+        const recuperarDitado = () => {
+          if (recognition !== session) return;
+          cancelDictation();
+          help.textContent = input.value.trim()
+            ? "O navegador demorou para concluir. Revise o texto capturado e toque em Enviar."
+            : "O navegador demorou para concluir o ditado. Tente o microfone do teclado.";
+        };
+        prazoDitado = setTimeout(recuperarDitado, 3000);
+        try { session.stop(); } catch { recuperarDitado(); }
       };
       session.onresult = event => {
         if (recognition !== session) return;
@@ -1346,6 +1358,8 @@ function loginPage(clientId) {
 
     const leitoresPorResposta = new WeakMap();
     const barraLeitura = get("leitura-ion");
+    const vozImediata = get("leitura-usar-aparelho");
+    let ultimoAudioFaber;
     const statusLeitura = get("leitura-status");
     const voltarLeitura = get("leitura-voltar");
     const avancarLeitura = get("leitura-avancar");
@@ -1430,6 +1444,8 @@ function loginPage(clientId) {
       const anterior = leitura;
       leitura = null;
       barraLeitura.hidden = voltarLeitura.hidden = avancarLeitura.hidden = velocidadeLeitura.hidden = pausaLeitura.hidden = true;
+      vozImediata.hidden = true;
+      vozImediata.onclick = null;
       iconeResposta(anterior.botao, "ouvir");
       anterior.botao.setAttribute("aria-label", "Ler texto da resposta em voz alta");
       if (anterior.audio) {
@@ -1517,10 +1533,19 @@ function loginPage(clientId) {
             leitura = sessao;
             iconeResposta(ouvir, "parar");
             ouvir.setAttribute("aria-label", "Parar leitura");
-            iniciarLeitura("Preparando a leitura…");
+            iniciarLeitura("Preparando a voz Faber…");
+            if (leitor && window.SpeechSynthesisUtterance) {
+              vozImediata.hidden = false;
+              vozImediata.onclick = () => {
+                if (leitura !== sessao) return;
+                pararLeitura();
+                reproduzir(true);
+              };
+            }
             let prazo;
             try {
               const preparar = async () => {
+                if (ultimoAudioFaber?.texto === texto) return ultimoAudioFaber.blob;
                 const piper = await import("https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.5/+esm");
                 if (leitura !== sessao) return null;
                 return piper.predict({ text: texto, voiceId: "pt_BR-faber-medium" }, progresso => {
@@ -1533,6 +1558,9 @@ function loginPage(clientId) {
                 prazo = setTimeout(() => reject(new Error("Tempo de preparação excedido")), 45000);
               })]);
               if (leitura !== sessao) return;
+              ultimoAudioFaber = { texto, blob: audioWav };
+              vozImediata.hidden = true;
+              vozImediata.onclick = null;
               const audio = document.createElement("audio");
               sessao.url = URL.createObjectURL(audioWav);
               sessao.audio = audio;
@@ -2289,6 +2317,10 @@ function loginPage(clientId) {
       if (recuperarJingle || projetoDeVideo || (!videoRequest && !trafficRequest && !bentoRequest)) {
         const mensagens = montarContextoDaConversa(current);
         send.disabled = microphone.disabled = true;
+        const sinalConversa = AbortSignal.timeout(45000);
+        const avisoDeEspera = setTimeout(() => {
+          body.textContent = "Pedido enviado. Aguardando o núcleo de conversa…";
+        }, 5000);
         try {
           const ultimaPartitura = findLastMessage(entrada => partituraValida(entrada.partitura))?.partitura;
           const ultimoVideo = findLastMessage(entrada => videoValido(entrada.roteiroVideo))?.roteiroVideo;
@@ -2296,6 +2328,7 @@ function loginPage(clientId) {
             method: "POST",
             headers: { Authorization: "Bearer " + credential, "Content-Type": "application/json" },
             body: JSON.stringify({ mensagens, ultimaPartitura, ultimoVideo }),
+            signal: sinalConversa,
           });
           const payload = await response.json();
           if (recuperarJingle && response.ok && partituraValida(payload.partitura)) {
@@ -2322,8 +2355,11 @@ function loginPage(clientId) {
             update(response.ok ? payload.texto : payload.erro);
           }
         } catch {
-          update("Falha de conexão com o núcleo de conversa.");
+          update(sinalConversa.aborted
+            ? "O núcleo de conversa demorou para responder. Seu pedido ficou no histórico. Use Repetir pedido para tentar novamente."
+            : "Falha de conexão com o núcleo de conversa.");
         } finally {
+          clearTimeout(avisoDeEspera);
           send.disabled = microphone.disabled = false;
         }
         return;
