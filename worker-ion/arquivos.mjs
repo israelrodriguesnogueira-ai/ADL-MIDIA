@@ -4,12 +4,18 @@ const headers = { "Cache-Control": "private, no-store", "X-Content-Type-Options"
 
 export async function arquivosDoDono(request, bucket, id) {
   const metodo = id ? "GET" : "POST";
-  if (request.method !== metodo) {
-    return new Response(null, { status: 405, headers: { ...headers, Allow: metodo } });
+  if (request.method !== metodo && !(id && request.method === "HEAD")) {
+    return new Response(null, { status: 405, headers: { ...headers, Allow: id ? "GET, HEAD" : metodo } });
   }
   if (!bucket) return Response.json({ erro: "Armazenamento privado ainda não configurado." }, { status: 503, headers });
   if (id) {
     const objeto = await bucket.get("midia/" + id);
+    if (request.method === "HEAD") {
+      if (objeto) return new Response(null, { status: 200, headers });
+      const reserva = await bucket.get("render/" + id);
+      const pendente = Number(reserva?.customMetadata?.expira) > Date.now();
+      return new Response(null, { status: pendente ? 202 : 404, headers });
+    }
     if (!objeto) return Response.json({ erro: "Arquivo não encontrado." }, { status: 404, headers });
     const tipo = objeto.httpMetadata?.contentType;
     const extensao = FORMATOS.get(tipo);
