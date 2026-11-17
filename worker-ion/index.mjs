@@ -861,7 +861,21 @@ function loginPage(clientId) {
     }
   }
   .ion-compose { display: flex; align-items: flex-end; gap: .15rem; border: 1px solid #3b4b66; background: #151f31; border-radius: 1.65rem; padding: .2rem; }
-  .ion-compose #pedido-ion { flex: 1; min-width: 0; min-height: 44px; max-height: min(32dvh, 12rem); margin: 0; padding: .65rem .2rem; border: 0; resize: none; field-sizing: content; background: transparent; color: inherit; font-size: 16px; line-height: 1.4; }
+  .ion-compose #pedido-ion { flex: 1; min-width: 0; min-height: 44px; max-height: min(32dvh, 12rem); margin: 0; padding: .65rem .2rem; border: 0; resize: none; overflow-y: auto; background: transparent; color: inherit; font-size: 16px; line-height: 1.4; }
+  .ion-compose.ion-editor-ampliado {
+    display: grid;
+    grid-template-columns: repeat(4, 44px) minmax(0, 1fr);
+    align-items: center;
+  }
+  .ion-compose.ion-editor-ampliado #pedido-ion {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    min-height: min(8rem, calc(var(--ion-altura-visivel, 100dvh) * .3));
+    max-height: min(20rem, calc(var(--ion-altura-visivel, 100dvh) * .55));
+    padding-inline: .65rem;
+  }
+  .ion-compose:not(.ion-editor-ampliado) #expandir-pedido-ion svg:last-child,
+  .ion-compose.ion-editor-ampliado #expandir-pedido-ion svg:first-child { display: none; }
   .ion-compose button { display: inline-grid; place-items: center; width: 44px; height: 44px; min-width: 44px; padding: 0; flex-shrink: 0; border: 0; background: transparent; }
   .ion-compose button svg { width: 23px; height: 23px; }
   #gravar-audio, #enviar-ion { background: #4061e8; color: white; }
@@ -981,6 +995,10 @@ function loginPage(clientId) {
         </button>
         <label for="pedido-ion" class="ion-label">Mensagem para o Aion</label>
         <textarea id="pedido-ion" rows="1" placeholder="Mensagem para o Aion" maxlength="${LIMITE_TEXTO_CONVERSA}"></textarea>
+        <button id="expandir-pedido-ion" type="button" aria-label="Ampliar campo de mensagem" aria-controls="pedido-ion" aria-expanded="false" title="Ampliar campo de mensagem">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 5h5v5m0-5-6 6M10 19H5v-5m0 5 6-6"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 5l-6 6m0-5v5h5M5 19l6-6m-5 0h5v5"/></svg>
+        </button>
         <button id="voz-ion" type="button" aria-label="Iniciar ditado em português" title="Ditar uma mensagem de texto" aria-pressed="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg>
         </button>
@@ -1245,12 +1263,28 @@ function loginPage(clientId) {
       const temMensagem = Boolean(input.value.trim() || attachment || textFile || audioFile);
       send.hidden = !temMensagem || Boolean(audioRecorder);
       recordAudio.hidden = temMensagem && !audioRecorder;
-      if (!CSS.supports("field-sizing", "content")) {
-        input.style.height = "auto";
-        input.style.height = input.scrollHeight + "px";
-      }
+      ajustarEditor();
     }
+    function ajustarEditor() {
+      input.style.height = "auto";
+      input.style.height = input.scrollHeight + "px";
+    }
+    const expandirEditor = get("expandir-pedido-ion");
+    const compositor = input.closest(".ion-compose");
+    expandirEditor.addEventListener("pointerdown", evento => {
+      if (document.activeElement === input) evento.preventDefault();
+    });
+    expandirEditor.onclick = () => {
+      const ampliado = compositor.classList.toggle("ion-editor-ampliado");
+      const rotulo = ampliado ? "Recolher campo de mensagem" : "Ampliar campo de mensagem";
+      expandirEditor.setAttribute("aria-expanded", String(ampliado));
+      expandirEditor.setAttribute("aria-label", rotulo);
+      expandirEditor.title = rotulo;
+      ajustarEditor();
+    };
     input.addEventListener("input", atualizarBarra);
+    window.addEventListener("resize", ajustarEditor);
+    viewport?.addEventListener("resize", ajustarEditor);
     new MutationObserver(atualizarBarra).observe(attachmentStatus, { childList: true });
 
 
