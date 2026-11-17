@@ -856,12 +856,12 @@ function loginPage(clientId) {
       overflow: hidden;
     }
     #painel.ion-digitando .ion-arquivo-privado { display: none; }
-    #painel.ion-digitando .ion-compose #pedido-ion {
-      max-height: min(calc(var(--ion-altura-visivel, 100dvh) * .25), 12rem);
+    #painel.ion-digitando .ion-compose:not(.ion-editor-ampliado) #pedido-ion {
+      max-height: min(calc(var(--ion-altura-visivel, 100dvh) * .4), 12rem);
     }
   }
   .ion-compose { display: flex; align-items: flex-end; gap: .15rem; border: 1px solid #3b4b66; background: #151f31; border-radius: 1.65rem; padding: .2rem; }
-  .ion-compose #pedido-ion { flex: 1; min-width: 0; min-height: 44px; max-height: min(32dvh, 12rem); margin: 0; padding: .65rem .2rem; border: 0; resize: none; overflow-y: auto; background: transparent; color: inherit; font-size: 16px; line-height: 1.4; }
+  .ion-compose #pedido-ion { box-sizing: border-box; flex: 1; min-width: 0; min-height: 44px; max-height: min(32dvh, 12rem); margin: 0; padding: .65rem .2rem; border: 0; resize: none; overflow-y: auto; background: transparent; color: inherit; font-size: 16px; line-height: 1.4; }
   .ion-compose.ion-editor-ampliado {
     display: grid;
     grid-template-columns: repeat(4, 44px) minmax(0, 1fr);
@@ -1266,7 +1266,7 @@ function loginPage(clientId) {
       ajustarEditor();
     }
     function ajustarEditor() {
-      input.style.height = "auto";
+      input.style.height = "0px";
       input.style.height = input.scrollHeight + "px";
     }
     const expandirEditor = get("expandir-pedido-ion");
