@@ -1147,7 +1147,7 @@ function loginPage(clientId) {
             help.textContent = "Não foi possível reabrir o áudio salvo nesta conversa.";
           }
         }
-        if (entry.video3D) apresentarLinks3D(item, entry.video3D);
+        if (entry.video3D) apresentarLinks3D(item, entry.video3D, entry === chat[chat.length - 1]);
         if (videoValido(entry.roteiroVideo)) apresentarRoteiro(item, entry.roteiroVideo);
         if ((entry.proposta || entry.tentarProposta) && entry === chat[chat.length - 1]) apresentarAprovacao(item, entry);
         const gravacao = audiosDaSessao.get(entry);
@@ -2134,7 +2134,7 @@ function loginPage(clientId) {
       }
     }
 
-    function apresentarLinks3D(item, dados) {
+    function apresentarLinks3D(item, dados, automatico = false) {
       const links = [
         [dados.acompanhamento, "Acompanhar renderização", /^https:\\/\\/github\\.com\\/israelrodriguesnogueira-ai\\/ADL-MIDIA\\/actions\\/(?:runs\\/[0-9]+|workflows\\/aion-video-3d\\.yml)$/],
         [dados.arquivo, "Abrir vídeo privado", /^\\/\\?arquivo=[0-9a-f-]{36}$/],
@@ -2155,7 +2155,11 @@ function loginPage(clientId) {
       const consultar = document.createElement("button");
       consultar.type = "button";
       consultar.textContent = "Verificar progresso";
+      const prazo = Date.now() + 2 * 60 * 1000;
+      let proximaConsulta;
       const atualizar = async () => {
+        if (!item.isConnected || consultar.disabled) return;
+        clearTimeout(proximaConsulta);
         consultar.disabled = true;
         status.textContent = "Consultando a produção…";
         try {
@@ -2166,7 +2170,11 @@ function loginPage(clientId) {
             signal: AbortSignal.timeout(10000),
           });
           if (resposta.status === 200) status.textContent = "Vídeo pronto. Abra o link privado para assistir.";
-          else if (resposta.status === 202) status.textContent = "Pedido recebido. O arquivo ainda não chegou.";
+          else if (resposta.status === 202) {
+            status.textContent = "Pedido recebido. O arquivo ainda não chegou.";
+            if (automatico && Date.now() < prazo) proximaConsulta = setTimeout(atualizar, 10000);
+            else if (automatico) status.textContent += " Use Verificar progresso para consultar novamente.";
+          }
           else if (resposta.status === 404) status.textContent = "Arquivo indisponível. Confira a renderização antes de pedir novamente.";
           else if (resposta.status === 401 || resposta.status === 403) status.textContent = "Entre novamente para consultar o vídeo.";
           else status.textContent = "Consulta temporariamente indisponível.";
@@ -2178,6 +2186,7 @@ function loginPage(clientId) {
       };
       consultar.onclick = atualizar;
       item.append(consultar, status);
+      if (automatico) proximaConsulta = setTimeout(atualizar, 1000);
     }
 
     function apresentarRoteiro(item, roteiro) {
@@ -2584,7 +2593,14 @@ function loginPage(clientId) {
           : "Arquivo adicionado nesta sessão. Use Baixar arquivo para salvar.");
         return;
       }
-      const pedido3D = !file && /^(?:(?:crie|gere|produza|fa[cz]a|renderize) (?:(?:um|o) )?)?video 3d (?:do|de um) vestido(?: preto)?$/.test(command);
+      const pedido3D = !file && /^(?:(?:crie|gere|produza|fa[cz]a|renderize) (?:(?:um|o) )?)?video (?:vertical )?3d(?: vertical)? (?:do |de um |de )?vestido(?: preto(?: de alfaiataria)?)?(?:(?: (?:com |de |duracao de |com duracao de )?15 segundos)|(?: vertical)|(?: com giro continuo(?: mostrando frente lateral e costas)?))*$/.test(command);
+      const vestido3DSolicitado = !file
+        && /^(?:(?:crie|gere|produza|fa[cz]a|renderize) )/.test(command)
+        && /\\bvideo\\b/.test(command) && /\\b3d\\b/.test(command) && /\\bvestido\\b/.test(command);
+      if (vestido3DSolicitado && !pedido3D) {
+        update("O renderizador disponível produz uma demonstração vertical de 15 segundos com giro do vestido preto. Peça essa versão para iniciar a renderização.");
+        return;
+      }
       if (pedido3D) {
         send.disabled = microphone.disabled = true;
         body.textContent = "Solicitando o giro 3D do vestido…";
@@ -2597,8 +2613,8 @@ function loginPage(clientId) {
           const dados = await resposta.json();
           if (!resposta.ok) throw new Error(dados.erro || "Não foi possível iniciar a produção 3D.");
           record.video3D = { acompanhamento: dados.acompanhamento, arquivo: dados.arquivo };
-          update("Renderização solicitada. Acompanhe pelo GitHub. O link privado abre o vídeo assim que ele for salvo.");
-          apresentarLinks3D(item, record.video3D);
+          update("Pedido recebido. Vou consultar a disponibilidade do vídeo. O link privado abre o MP4 assim que ele for salvo.");
+          apresentarLinks3D(item, record.video3D, true);
         } catch (erro) {
           update(erro.message);
         } finally {
