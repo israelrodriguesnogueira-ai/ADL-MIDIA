@@ -842,6 +842,24 @@ function loginPage(clientId) {
   #conversa-ion li { border: 0; background: transparent; padding: .75rem; }
   #conversa-ion .msg-user { justify-self: end; max-width: 88%; background: #243a55; }
   #comando-ion { position: static; flex-shrink: 0; }
+  @media (max-width: 899px) {
+    #painel.ion-digitando:not([hidden]) {
+      position: fixed;
+      top: var(--ion-topo-visivel, 0px);
+      left: 0;
+      right: 0;
+      z-index: 2;
+      box-sizing: border-box;
+      height: var(--ion-altura-visivel, 100dvh);
+      padding: .75rem 1rem 0;
+      background: #101827;
+      overflow: hidden;
+    }
+    #painel.ion-digitando .ion-arquivo-privado { display: none; }
+    #painel.ion-digitando .ion-compose #pedido-ion {
+      max-height: min(calc(var(--ion-altura-visivel, 100dvh) * .25), 12rem);
+    }
+  }
   .ion-compose { display: flex; align-items: flex-end; gap: .15rem; border: 1px solid #3b4b66; background: #151f31; border-radius: 1.65rem; padding: .2rem; }
   .ion-compose #pedido-ion { flex: 1; min-width: 0; min-height: 44px; max-height: min(32dvh, 12rem); margin: 0; padding: .65rem .2rem; border: 0; resize: none; field-sizing: content; background: transparent; color: inherit; font-size: 16px; line-height: 1.4; }
   .ion-compose button { display: inline-grid; place-items: center; width: 44px; height: 44px; min-width: 44px; padding: 0; flex-shrink: 0; border: 0; background: transparent; }
@@ -1079,12 +1097,21 @@ function loginPage(clientId) {
     const attachmentStatus = get("anexo-status");
     const viewport = window.visualViewport;
     if (viewport) {
-      const ajustarAltura = () => {
+      const painel = get("painel");
+      const ajustarViewport = () => {
         if (viewport.scale !== 1) return;
-        get("painel").style.setProperty("--ion-altura-visivel", viewport.height + "px");
+        painel.style.setProperty("--ion-altura-visivel", viewport.height + "px");
+        painel.style.setProperty("--ion-topo-visivel", viewport.offsetTop + "px");
       };
-      viewport.addEventListener("resize", ajustarAltura);
-      ajustarAltura();
+      const ajustarFoco = () => {
+        painel.classList.toggle("ion-digitando", document.activeElement === input);
+        ajustarViewport();
+      };
+      viewport.addEventListener("resize", ajustarViewport);
+      viewport.addEventListener("scroll", ajustarViewport);
+      input.addEventListener("focus", ajustarFoco);
+      input.addEventListener("blur", () => requestAnimationFrame(ajustarFoco));
+      ajustarFoco();
     }
     const storageKey = "ion-conversas-v1";
     let saved = [];
@@ -3019,6 +3046,7 @@ function loginPage(clientId) {
     document.getElementById("painel").hidden = false;
     connectCommands(areas, credential);
     const importacao = document.createElement("label");
+    importacao.className = "ion-arquivo-privado";
     importacao.textContent = "Guardar vídeo privado (MP4 ou WebM, até 1,5 MB) ";
     const arquivoLocal = document.createElement("input");
     arquivoLocal.type = "file";
