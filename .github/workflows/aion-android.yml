@@ -1,0 +1,44 @@
+name: Aion Android
+
+on:
+  push:
+    branches:
+      - 'aion/android-native'
+    paths:
+      - 'android-aion/**'
+      - '.github/workflows/aion-android.yml'
+  pull_request:
+    paths:
+      - 'android-aion/**'
+      - '.github/workflows/aion-android.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: android-aion
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Instalar SDK Android 35
+        run: sdkmanager 'platforms;android-35'
+      - name: Compilar e verificar
+        env:
+          ORG_GRADLE_PROJECT_AION_GOOGLE_CLIENT_ID: ${{ vars.AION_GOOGLE_CLIENT_ID }}
+        run: gradle :app:assembleDebug :app:lintDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aion-android-debug
+          path: android-aion/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
