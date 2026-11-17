@@ -2,6 +2,29 @@ import { LIMITE_ARQUIVO_D1 } from "./arquivos-d1.mjs";
 const FORMATOS = new Map([["video/mp4", "mp4"], ["video/webm", "webm"]]);
 const headers = { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" };
 
+export function referenciaDaTarefa(id, tipo, status) {
+  return { id, tipo, status, ...(status === "concluida" ? { arquivo: "/?arquivo=" + id } : {}) };
+}
+
+export async function consultarTarefa(bucket, id) {
+  if (!bucket) return Response.json({ erro: "Armazenamento privado ainda não configurado." }, { status: 503, headers });
+  const registro = await bucket.infoDaTarefa(id);
+  if (!registro) return Response.json({ erro: "Tarefa não encontrada." }, { status: 404, headers });
+  if (registro.chave === "midia/" + id) {
+    const tipo = registro.tipo === "audio/wav" ? "jingle" : "video";
+    return Response.json({ tarefa: referenciaDaTarefa(id, tipo, "concluida") }, { headers });
+  }
+  const status = Number(registro.expira) > Date.now() ? "solicitada" : "expirada";
+  return Response.json({ tarefa: referenciaDaTarefa(id, "video", status) }, { headers });
+}
+
+export async function guardarJingle(bucket, wav) {
+  const id = crypto.randomUUID();
+  const dados = await wav.arrayBuffer();
+  await bucket.put("midia/" + id, dados, { httpMetadata: { contentType: "audio/wav" } });
+  return referenciaDaTarefa(id, "jingle", "concluida");
+}
+
 export async function arquivosDoDono(request, bucket, id) {
   const metodo = id ? "GET" : "POST";
   if (request.method !== metodo && !(id && request.method === "HEAD")) {
@@ -18,7 +41,7 @@ export async function arquivosDoDono(request, bucket, id) {
     }
     if (!objeto) return Response.json({ erro: "Arquivo não encontrado." }, { status: 404, headers });
     const tipo = objeto.httpMetadata?.contentType;
-    const extensao = FORMATOS.get(tipo);
+    const extensao = tipo === "audio/wav" ? "wav" : FORMATOS.get(tipo);
     if (!extensao) return Response.json({ erro: "Formato indisponível." }, { status: 415, headers });
     return new Response(objeto.body, { headers: {
       ...headers, "Content-Type": tipo, "Content-Disposition": 'attachment; filename="aion.' + extensao + '"',

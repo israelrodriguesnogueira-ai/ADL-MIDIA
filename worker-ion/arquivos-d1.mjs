@@ -3,6 +3,12 @@ export const LIMITE_ARQUIVO_D1 = 1_500_000;
 
 export function arquivosEmD1(db) {
   return {
+    async infoDaTarefa(id) {
+      const midia = "midia/" + id;
+      return db.prepare(
+        "SELECT chave, tipo, expira FROM arquivos_ion WHERE chave IN (?, ?) ORDER BY chave LIMIT 1"
+      ).bind(midia, "render/" + id).first();
+    },
     async get(key) {
       const row = await db.prepare(
         "SELECT dados, tipo, expira FROM arquivos_ion WHERE chave = ?"
