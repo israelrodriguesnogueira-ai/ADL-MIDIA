@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { arquivosEmD1 } from "../worker-ion/arquivos-d1.mjs";
 import worker from "../worker-ion/index.mjs";
-import { arquivosDoDono, receberVideo3D, reservarVideo3D } from "../worker-ion/arquivos.mjs";
+import { arquivosDoDono, consultarTarefa, receberVideo3D, reservarVideo3D } from "../worker-ion/arquivos.mjs";
 
 const origin = "https://aion.example.test";
 const request = (path, init) => new Request(origin + path, init);
@@ -38,6 +38,8 @@ test("worker exige login para recuperar arquivo", async () => {
   };
   const response = await worker.fetch(request("/api/arquivos/8e8db426-1cae-41d4-b2fa-19c295eaae8f"), config);
   assert.equal(response.status, 401);
+  const tarefa = await worker.fetch(request("/api/tarefas/8e8db426-1cae-41d4-b2fa-19c295eaae8f"), config);
+  assert.equal(tarefa.status, 401);
 });
 
 test("limite real do upload é aplicado mesmo sem Content-Length", async () => {
@@ -64,6 +66,8 @@ test("renderização salva no endereço reservado e token deixa de funcionar ap�
   };
   const bucket = arquivosEmD1(db);
   const { id, token } = await reservarVideo3D(bucket);
+  const pendente = await consultarTarefa(bucket, id).then(resposta => resposta.json());
+  assert.deepEqual(pendente.tarefa, { id, tipo: "video", status: "solicitada" });
   const original = Uint8Array.of(0, 0, 0, 24, 102, 116, 121, 112);
   const route = "/api/video/3d/resultado/" + id;
   const callback = value => request(route, { method: "POST", body: original,
@@ -71,6 +75,8 @@ test("renderização salva no endereço reservado e token deixa de funcionar ap�
   const config = { ION_VIDEOS_DB: db };
   assert.equal((await worker.fetch(callback("a".repeat(72)), config)).status, 403);
   assert.equal((await worker.fetch(callback(token), config)).status, 201);
+  const entregue = await consultarTarefa(bucket, id).then(resposta => resposta.json());
+  assert.deepEqual(entregue.tarefa, { id, tipo: "video", status: "concluida", arquivo: "/?arquivo=" + id });
   assert.equal((await receberVideo3D(callback(token), bucket, id)).status, 403);
   const download = await arquivosDoDono(request("/api/arquivos/" + id), bucket, id);
   assert.deepEqual(new Uint8Array(await download.arrayBuffer()), original);
