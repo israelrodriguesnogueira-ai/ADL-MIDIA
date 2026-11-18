@@ -16,8 +16,8 @@ export function executarLocal(pedido) {
   if (pedido.acao === "criar_markdown") {
     if (!textoValido(pedido.titulo,120) || typeof pedido.conteudo !== "string" || pedido.conteudo.length > 12000)
       return {status:"erro",erro:"Titulo ou conteudo invalido"};
-    const titulo=pedido.titulo.trim().replace(/[\\r\\n#]/g," ").trim();
-    return resultado({nome:"ion-documento.md",tipo:"text/markdown; charset=utf-8",conteudo:"# "+titulo+"\\n\\n"+pedido.conteudo});
+    const titulo=pedido.titulo.trim().replace(/[\r\n#]/g," ").trim();
+    return resultado({nome:"ion-documento.md",tipo:"text/markdown; charset=utf-8",conteudo:"# "+titulo+"\n\n"+pedido.conteudo});
   }
   if (pedido.acao === "diagnosticar_falha") {
     // Aceita apenas metadados tecnicos declarados; nao persiste conversas, anexos ou prompts.
