@@ -2491,6 +2491,32 @@ function loginPage(clientId) {
         if (pertoDoFim) irParaUltimaMensagem();
         saveHistory();
       };
+      // Executor local na interface publicada: gera um arquivo real sem provedor externo.
+      // A conversa permanece privada no aparelho e nenhum dado é enviado para GitHub.
+      if (!file) {
+        const prefixo = /^(?:crie|criar|gere|gerar) (?:um )?(?:documento|arquivo de texto) (?:chamado|intitulado) /i;
+        const comandoLimpo = request.replace(/^(?:aion|ion)[, ]+/i, "");
+        const resto = comandoLimpo.replace(prefixo, "");
+        const separador = resto.toLowerCase().indexOf(" com texto:");
+        if (prefixo.test(comandoLimpo) && separador > 0) {
+          const titulo = resto.slice(0, separador).trim().replace(/^["“]|["”]$/g, "");
+          const conteudo = resto.slice(separador + " com texto:".length).trim();
+          if (titulo && titulo.length <= 120 && conteudo && conteudo.length <= 12000) {
+            const arquivoTexto = titulo + String.fromCharCode(10, 10) + conteudo;
+            const urlArquivo = URL.createObjectURL(new Blob([arquivoTexto], {type:"text/plain;charset=utf-8"}));
+            videoUrls.push(urlArquivo);
+            const baixarArquivo = document.createElement("a");
+            baixarArquivo.href = urlArquivo;
+            baixarArquivo.download = "aion-documento.txt";
+            baixarArquivo.textContent = "Baixar documento (.txt)";
+            item.append(baixarArquivo);
+            update("Documento criado: " + titulo + ". Toque em Baixar documento (.txt) para receber o arquivo.");
+            return;
+          }
+          update("Documento não criado. Informe um título de até 120 caracteres e texto de até 12.000 caracteres.");
+          return;
+        }
+      }
       const pedidoInterface = normalizarPedido(request).replace(/^(?:aion|ion)[, ]+/, "");
       const ajustesInterface = [
         ["velocidade", /^prepar(?:e|ar) a velocidade (?:para )?padrao (?:da|de) leitura (?:em|para|de) (0[.,]75|1(?:[.,](?:25|5))?|2)\\s*[x×]?\\s*[.!]?$/],
