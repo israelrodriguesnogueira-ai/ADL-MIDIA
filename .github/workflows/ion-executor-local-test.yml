@@ -21,7 +21,7 @@ jobs:
         with:
           node-version: '22'
       - name: Testar executor, rota e separacao de diagnosticos
-        run: node --test tests/ion-executor-local.test.mjs tests/ion-worker-executor.test.mjs tests/ion-diagnostico-separado.test.mjs tests/ion-comando-natural-local.test.mjs tests/ion-markdown-local.test.mjs tests/ion-download-artefatos.test.mjs tests/ion-homologacao-seguranca.test.mjs tests/ion-homologacao-negativa.test.mjs tests/ion-40-casos-regressao.test.mjs tests/ion-40-limites-entrada.test.mjs tests/ion-100-limites-regressao.test.mjs tests/ion-estado-operadores.test.mjs tests/ion-preview-raiz.test.mjs
+        run: node --test tests/ion-executor-local.test.mjs tests/ion-worker-executor.test.mjs tests/ion-diagnostico-separado.test.mjs tests/ion-comando-natural-local.test.mjs tests/ion-markdown-local.test.mjs tests/ion-download-artefatos.test.mjs tests/ion-homologacao-seguranca.test.mjs tests/ion-homologacao-negativa.test.mjs tests/ion-40-casos-regressao.test.mjs tests/ion-40-limites-entrada.test.mjs tests/ion-100-limites-regressao.test.mjs tests/ion-estado-operadores.test.mjs tests/ion-preview-raiz.test.mjs tests/ion-100-ciclos-validacao.test.mjs
       - name: Verificar Preview HTTP sem credenciais
         env:
           PREVIEW_URL: https://aion-estado-operadores-20261118-adl-midia.israelrodriguesnogueira.workers.dev
