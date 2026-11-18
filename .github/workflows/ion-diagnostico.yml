@@ -139,7 +139,9 @@ jobs:
               }, { once: true });
             });
             await new Promise((resolve, reject) => {
+              let completed = false;
               const timer = setTimeout(() => {
+                completed = true;
                 resolve();
                 socket.close();
               }, Number(process.env.CAPTURE_SECONDS) * 1000);
@@ -149,7 +151,7 @@ jobs:
               });
               socket.addEventListener("close", () => {
                 clearTimeout(timer);
-                reject(new Error("captura encerrada antes do prazo"));
+                if (!completed) reject(new Error("captura encerrada antes do prazo"));
               });
               socket.send(JSON.stringify({ debug: false }));
               console.error("Captura conectada.");
