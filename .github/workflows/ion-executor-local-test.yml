@@ -4,6 +4,7 @@ on:
     paths:
       - 'integracoes/ion-motor-worker.mjs'
       - 'integracoes/ion-executor-local.mjs'
+      - 'integracoes/ion-comando-natural-local.mjs'
       - 'integracoes/ion-roteador-operadores.mjs'
       - 'tests/ion-*.test.mjs'
       - '.github/workflows/ion-executor-local-test.yml'
@@ -20,4 +21,4 @@ jobs:
         with:
           node-version: '22'
       - name: Testar executor, rota e separacao de diagnosticos
-        run: node --test tests/ion-executor-local.test.mjs tests/ion-worker-executor.test.mjs tests/ion-diagnostico-separado.test.mjs
+        run: node --test tests/ion-executor-local.test.mjs tests/ion-worker-executor.test.mjs tests/ion-diagnostico-separado.test.mjs tests/ion-comando-natural-local.test.mjs

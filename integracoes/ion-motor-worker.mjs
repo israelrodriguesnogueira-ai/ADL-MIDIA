@@ -1,4 +1,5 @@
 import { executarLocal } from "./ion-executor-local.mjs";
+import { interpretarComandoLocal } from "./ion-comando-natural-local.mjs";
 import { identificarOperador, respostaSemExecutor } from "./ion-roteador-operadores.mjs";
 // ION - motor experimental para Cloudflare Workers.
 // NÃO publicar sem configurar autenticação e testar em ambiente isolado.
@@ -31,6 +32,11 @@ export default {async fetch(request,env){
  }
  const comando=body?.comando;
  if(typeof comando!=="string"||!comando.trim()||comando.length>3000)return json({erro:"Comando inválido"},400);
+ const pedidoLocal=interpretarComandoLocal(comando);
+ if(pedidoLocal){
+  const resultado=executarLocal(pedidoLocal);
+  return json({...resultado,origem:"comando_natural",operador:"desenvolvimento"},resultado.status==="concluido"?200:400);
+ }
  const roteamento=identificarOperador(comando);
  const plano={...classify(comando),operador:roteamento.operador};
  if(env.AI_ENABLED!=="1"||!env.AI_API_KEY||!env.AI_MODEL||!env.AI_BASE_URL)
