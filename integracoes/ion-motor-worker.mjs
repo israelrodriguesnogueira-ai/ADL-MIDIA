@@ -35,7 +35,22 @@ export default {async fetch(request,env){
  if(request.method!=="POST")return json({erro:"Método não permitido"},405);
  if(!env.ION_API_ACCESS_TOKEN||request.headers.get("authorization")!==`Bearer ${env.ION_API_ACCESS_TOKEN}`)return json({erro:"Não autorizado"},401);
  const size=Number(request.headers.get("content-length")||0);if(size>16000)return json({erro:"Pedido muito grande"},413);
- let body;try{body=await request.json()}catch{return json({erro:"JSON inválido"},400)}
+ let body;
+ try {
+  const reader=request.body?.getReader();
+  if(!reader)return json({erro:"JSON inválido"},400);
+  const chunks=[];let total=0;
+  while(true){
+   const {done,value}=await reader.read();
+   if(done)break;
+   total+=value.byteLength;
+   if(total>16000){await reader.cancel();return json({erro:"Pedido muito grande"},413);}
+   chunks.push(value);
+  }
+  const bytes=new Uint8Array(total);let offset=0;
+  for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}
+  body=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(bytes));
+ }catch{return json({erro:"JSON inválido"},400)}
  if(url.pathname==="/api/executar-local") {
   const resultado=executarLocal(body);
   const arquivo=responderArtefato(resultado,url.searchParams.get("download")==="1");
