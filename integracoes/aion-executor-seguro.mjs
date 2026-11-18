@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 const exec = promisify(execFile);
 const root = fileURLToPath(new URL("../", import.meta.url));
 const tarefas = Object.freeze({
+  "verificar-runtime": { comando: process.execPath, argumentos: ["--version"], operador: "desenvolvimento" },
   "testar-sistema": { comando: process.execPath, argumentos: ["--test", "testes/video-i2v-adapter.test.mjs"], operador: "desenvolvimento" },
   "diagnosticar-operadores": { comando: process.execPath, argumentos: ["scripts/aion-supervisor.mjs"], operador: "desenvolvimento" },
 });
