@@ -5,9 +5,21 @@ const textoValido = (s,max) => typeof s === "string" && !!s.trim() && s.length <
 export function executarLocal(pedido) {
   if (!pedido || typeof pedido !== "object" || Array.isArray(pedido)) return {status:"erro",erro:"Pedido invalido"};
   if (pedido.acao === "capacidades") return {
-    status:"concluido",capacidades:["capacidades","criar_texto","criar_markdown","diagnosticar_falha"],
+    status:"concluido",capacidades:["capacidades","estado_operadores","criar_texto","criar_markdown","diagnosticar_falha"],
     limites:["sem execucao de shell","sem publicacao","sem operacoes financeiras","sem custos externos"]
   };
+  if (pedido.acao === "estado_operadores") {
+    // Estado das capacidades do executor experimental, não da implantação de produção.
+    const operadores = [
+      {nome:"desenvolvimento",estado:"parcial",capacidades:["criar_texto","criar_markdown","diagnosticar_falha"]},
+      {nome:"midia",estado:"nao_conectado",capacidades:[]},
+      {nome:"financeiro",estado:"nao_conectado",capacidades:[]},
+      {nome:"cientifico",estado:"nao_conectado",capacidades:[]},
+      {nome:"shopee",estado:"nao_conectado",capacidades:[]}
+    ];
+    return {status:"concluido",escopo:"executor_local_experimental",operadores,
+      custoAdicional:0,observacao:"Não representa disponibilidade ou implantação do AION em produção."};
+  }
   if (pedido.acao === "criar_texto") {
     if (!textoValido(pedido.titulo,120) || typeof pedido.conteudo !== "string" || pedido.conteudo.length > 12000)
       return {status:"erro",erro:"Titulo ou conteudo invalido"};
