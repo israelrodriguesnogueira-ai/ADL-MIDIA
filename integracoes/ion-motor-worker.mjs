@@ -1,3 +1,4 @@
+import { executarLocal } from "./ion-executor-local.mjs";
 import { identificarOperador, respostaSemExecutor } from "./ion-roteador-operadores.mjs";
 // ION - motor experimental para Cloudflare Workers.
 // NÃO publicar sem configurar autenticação e testar em ambiente isolado.
@@ -19,11 +20,15 @@ function classify(command){
 export default {async fetch(request,env){
  const url=new URL(request.url);
  if(url.pathname==="/health"&&request.method==="GET")return json({status:"online",motor:"experimental",iaConfigurada:Boolean(env.AI_API_KEY&&env.AI_MODEL&&env.AI_ENABLED==="1")});
- if(url.pathname!=="/api/comando")return json({erro:"Rota inexistente"},404);
+ if(!["/api/comando","/api/executar-local"].includes(url.pathname))return json({erro:"Rota inexistente"},404);
  if(request.method!=="POST")return json({erro:"Método não permitido"},405);
  if(!env.ION_API_ACCESS_TOKEN||request.headers.get("authorization")!==`Bearer ${env.ION_API_ACCESS_TOKEN}`)return json({erro:"Não autorizado"},401);
  const size=Number(request.headers.get("content-length")||0);if(size>16000)return json({erro:"Pedido muito grande"},413);
  let body;try{body=await request.json()}catch{return json({erro:"JSON inválido"},400)}
+ if(url.pathname==="/api/executar-local") {
+  const resultado=executarLocal(body);
+  return json(resultado,resultado.status==="erro"?400:resultado.status==="nao_suportado"?422:200);
+ }
  const comando=body?.comando;
  if(typeof comando!=="string"||!comando.trim()||comando.length>3000)return json({erro:"Comando inválido"},400);
  const roteamento=identificarOperador(comando);
