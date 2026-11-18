@@ -34,6 +34,26 @@ jobs:
       - uses: android-actions/setup-android@v3
         with:
           packages: 'platforms;android-35 build-tools;35.0.0'
+      - name: Validar configuração OAuth antes de gerar APK
+        env:
+          AION_GOOGLE_CLIENT_ID: ${{ vars.AION_GOOGLE_CLIENT_ID }}
+        run: |
+          if [ -z "$AION_GOOGLE_CLIENT_ID" ]; then
+            echo "::error::AION_GOOGLE_CLIENT_ID ausente nas variáveis do repositório. APK com login desativado não será publicado."
+            exit 1
+          fi
+          if ! printf '%s' "$AION_GOOGLE_CLIENT_ID" | grep -Eq '^[0-9]+-[A-Za-z0-9_-]+[.]apps[.]googleusercontent[.]com        env:
+          ORG_GRADLE_PROJECT_AION_GOOGLE_CLIENT_ID: ${{ vars.AION_GOOGLE_CLIENT_ID }}
+        run: gradle :app:assembleDebug :app:lintDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aion-android-debug
+          path: android-aion/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+; then
+            echo "::error::AION_GOOGLE_CLIENT_ID não tem formato de Client ID OAuth web."
+            exit 1
+          fi
       - name: Compilar e verificar
         env:
           ORG_GRADLE_PROJECT_AION_GOOGLE_CLIENT_ID: ${{ vars.AION_GOOGLE_CLIENT_ID }}
