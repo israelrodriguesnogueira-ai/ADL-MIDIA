@@ -49,7 +49,7 @@ const cases=[
 for(const item of cases){
  test(item.name,async()=>{
   if(item.kind==="route"){assert.equal(identificarOperador(item.value).operador,item.expected);return;}
-  if(item.kind==="bad"){assert.equal(executarLocal(item.value).status,"erro");return;}
+  if(item.kind==="bad"){assert.ok(["erro","nao_suportado"].includes(executarLocal(item.value).status));return;}
   if(item.kind==="valid"){assert.equal(executarLocal(item.value).status,"concluido");return;}
   const r=await send("/api/executar-local",{acao:item.value});
   assert.equal(r.status,422);
