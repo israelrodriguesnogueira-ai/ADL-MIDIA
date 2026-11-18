@@ -21,4 +21,4 @@ jobs:
         with:
           node-version: '22'
       - name: Testar executor, rota e separacao de diagnosticos
-        run: node --test tests/ion-executor-local.test.mjs tests/ion-worker-executor.test.mjs tests/ion-diagnostico-separado.test.mjs tests/ion-comando-natural-local.test.mjs tests/ion-markdown-local.test.mjs tests/ion-download-artefatos.test.mjs
+        run: node --test tests/ion-executor-local.test.mjs tests/ion-worker-executor.test.mjs tests/ion-diagnostico-separado.test.mjs tests/ion-comando-natural-local.test.mjs tests/ion-markdown-local.test.mjs tests/ion-download-artefatos.test.mjs tests/ion-homologacao-seguranca.test.mjs tests/ion-estado-operadores.test.mjs
