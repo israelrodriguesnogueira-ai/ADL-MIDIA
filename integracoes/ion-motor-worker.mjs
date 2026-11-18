@@ -6,6 +6,16 @@ import { identificarOperador, respostaSemExecutor } from "./ion-roteador-operado
 // Secrets: ION_API_ACCESS_TOKEN; opcionais AI_API_KEY, AI_BASE_URL, AI_MODEL.
 // AI_ENABLED=1 somente após aprovação explícita dos custos e do provedor.
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff"}});
+function responderArtefato(resultado,download) {
+ if(!download || resultado.status!=="concluido" || !resultado.artefato) return null;
+ const {nome,tipo,conteudo}=resultado.artefato;
+ if(!["ion-documento.txt","ion-documento.md"].includes(nome) || typeof conteudo!=="string") return null;
+ return new Response(conteudo,{status:200,headers:{
+  "content-type":tipo,"content-disposition":'attachment; filename="'+nome+'"',
+  "cache-control":"no-store","x-content-type-options":"nosniff",
+  "content-security-policy":"default-src 'none'; sandbox"
+ }});
+}
 function classify(command){
  const operador=identificarOperador(command).operador;
  const etapas={
@@ -28,6 +38,8 @@ export default {async fetch(request,env){
  let body;try{body=await request.json()}catch{return json({erro:"JSON inválido"},400)}
  if(url.pathname==="/api/executar-local") {
   const resultado=executarLocal(body);
+  const arquivo=responderArtefato(resultado,url.searchParams.get("download")==="1");
+  if(arquivo)return arquivo;
   return json(resultado,resultado.status==="erro"?400:resultado.status==="nao_suportado"?422:200);
  }
  const comando=body?.comando;
@@ -35,6 +47,8 @@ export default {async fetch(request,env){
  const pedidoLocal=interpretarComandoLocal(comando);
  if(pedidoLocal){
   const resultado=executarLocal(pedidoLocal);
+  const arquivo=responderArtefato(resultado,url.searchParams.get("download")==="1");
+  if(arquivo)return arquivo;
   return json({...resultado,origem:"comando_natural",operador:"desenvolvimento"},resultado.status==="concluido"?200:400);
  }
  const roteamento=identificarOperador(comando);
