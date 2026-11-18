@@ -13,5 +13,5 @@ test("exige aprovacao antes de executar", async () => {
 test("executa de verdade tarefa permitida", async () => {
  const r = await executarTarefa({ tarefa: "verificar-runtime", aprovado: true });
  assert.equal(r.status, "executado");
- assert.match(r.saida, /^v\\d+\\.\\d+\\.\\d+/);
+ assert.match(r.saida, /^v[0-9]+[.][0-9]+[.][0-9]+/);
 });
