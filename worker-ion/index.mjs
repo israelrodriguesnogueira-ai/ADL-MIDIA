@@ -2491,29 +2491,31 @@ function loginPage(clientId) {
         if (pertoDoFim) irParaUltimaMensagem();
         saveHistory();
       };
-      // Executor local na interface publicada: gera um arquivo real sem provedor externo.
-      // A conversa permanece privada no aparelho e nenhum dado é enviado para GitHub.
+      // Documentos executados no próprio aparelho, sem serviços externos.
       if (!file) {
-        const prefixo = /^(?:crie|criar|gere|gerar) (?:um )?(?:documento|arquivo de texto) (?:chamado|intitulado) /i;
         const comandoLimpo = request.replace(/^(?:aion|ion)[, ]+/i, "");
-        const resto = comandoLimpo.replace(prefixo, "");
-        const separador = resto.toLowerCase().indexOf(" com texto:");
-        if (prefixo.test(comandoLimpo) && separador > 0) {
-          const titulo = resto.slice(0, separador).trim().replace(/^["“]|["”]$/g, "");
-          const conteudo = resto.slice(separador + " com texto:".length).trim();
-          if (titulo && titulo.length <= 120 && conteudo && conteudo.length <= 12000) {
-            const arquivoTexto = titulo + String.fromCharCode(10, 10) + conteudo;
-            const urlArquivo = URL.createObjectURL(new Blob([arquivoTexto], {type:"text/plain;charset=utf-8"}));
-            videoUrls.push(urlArquivo);
-            const baixarArquivo = document.createElement("a");
-            baixarArquivo.href = urlArquivo;
-            baixarArquivo.download = "aion-documento.txt";
-            baixarArquivo.textContent = "Baixar documento (.txt)";
-            item.append(baixarArquivo);
-            update("Documento criado: " + titulo + ". Toque em Baixar documento (.txt) para receber o arquivo.");
+        const match = /^(?:crie|criar|gere|gerar)\\s+(?:um\\s+)?(documento markdown|arquivo markdown|documento|arquivo de texto)\\s+(?:chamado|intitulado)\\s+["“]?([^"”:\\n]{1,120})["”]?\\s+(?:com\\s+(?:o\\s+)?texto|contendo)\\s*:\\s*([\\s\\S]+?)\\s*$/i.exec(comandoLimpo);
+        if (match) {
+          const markdown = /markdown/i.test(match[1]);
+          const titulo = match[2].trim();
+          const conteudo = match[3].trim();
+          if (!titulo || !conteudo || conteudo.length > 12000) {
+            update("Documento não criado. Informe título e texto de até 12.000 caracteres.");
             return;
           }
-          update("Documento não criado. Informe um título de até 120 caracteres e texto de até 12.000 caracteres.");
+          const texto = markdown
+            ? "# " + titulo.replace(/[\\r\\n#]/g, " ").trim() + "\\n\\n" + conteudo
+            : titulo + "\\n\\n" + conteudo;
+          const extensao = markdown ? "md" : "txt";
+          const tipo = markdown ? "text/markdown;charset=utf-8" : "text/plain;charset=utf-8";
+          const urlArquivo = URL.createObjectURL(new Blob([texto], { type: tipo }));
+          videoUrls.push(urlArquivo);
+          const baixarArquivo = document.createElement("a");
+          baixarArquivo.href = urlArquivo;
+          baixarArquivo.download = "aion-documento." + extensao;
+          baixarArquivo.textContent = "Baixar documento (." + extensao + ")";
+          item.append(baixarArquivo);
+          update("Documento criado: " + titulo + ". Toque em Baixar documento (." + extensao + ") para receber o arquivo.");
           return;
         }
       }
