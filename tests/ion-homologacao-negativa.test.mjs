@@ -37,3 +37,16 @@ test("operador sem executor nao alega tarefa executada",async()=>{
  assert.equal(data.operador,"midia");
  assert.match(data.detalhe,/nenhuma tarefa externa foi executada/i);
 });
+
+test("corpo maior que 16KB sem Content-Length e rejeitado",async()=>{
+ const payload=JSON.stringify({acao:"criar_texto",titulo:"x",conteudo:"a".repeat(17000)});
+ const req=new Request(endpoint,{method:"POST",headers:{"authorization":"Bearer segredo-apenas-do-teste","content-type":"application/json"},body:new ReadableStream({
+  start(controller){controller.enqueue(new TextEncoder().encode(payload));controller.close();}
+ }),duplex:"half"});
+ const response=await worker.fetch(req,env);
+ assert.equal(response.status,413);
+});
+test("corpo valido abaixo do limite continua aceito",async()=>{
+ const response=await worker.fetch(request("/api/executar-local","POST",{acao:"capacidades"},"Bearer segredo-apenas-do-teste"),env);
+ assert.equal(response.status,200);
+});
