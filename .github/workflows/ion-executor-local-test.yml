@@ -19,5 +19,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Testar executor e rota
-        run: node --test tests/ion-executor-local.test.mjs tests/ion-worker-executor.test.mjs
+      - name: Testar executor, rota e separacao de diagnosticos
+        run: node --test tests/ion-executor-local.test.mjs tests/ion-worker-executor.test.mjs tests/ion-diagnostico-separado.test.mjs
