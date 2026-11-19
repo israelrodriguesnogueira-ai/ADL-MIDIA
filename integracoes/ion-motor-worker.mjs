@@ -146,7 +146,9 @@ export default {async fetch(request,env){
    const artifactsResponse=await fetch(prefix+runId+"/artifacts?per_page=30",{headers,signal:AbortSignal.timeout(10000)});
    if(!artifactsResponse.ok)return json({status:"erro",erro:"Falha na consulta dos artefatos"},502);
    const data=await artifactsResponse.json();
-   const artifact=Array.isArray(data?.artifacts)?data.artifacts.find(a=>\n    a.name==="aion-roteiro-15s"&&!a.expired&&Number.isSafeInteger(a.id)&&\n    Number.isSafeInteger(a.size_in_bytes)&&a.size_in_bytes>0&&a.size_in_bytes<=25000000):null;
+   const artifact=Array.isArray(data?.artifacts)?data.artifacts.find(a=>
+    a.name==="aion-roteiro-15s"&&!a.expired&&Number.isSafeInteger(a.id)&&
+    Number.isSafeInteger(a.size_in_bytes)&&a.size_in_bytes>0&&a.size_in_bytes<=25000000):null;
    if(!artifact)return json({status:"indisponivel",runId,artefatoDisponivel:false},404);
    return json({status:"disponivel",runId,artefatoDisponivel:true,
     nome:artifact.name,tamanhoBytes:artifact.size_in_bytes??null,
