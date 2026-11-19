@@ -74,7 +74,7 @@ export default {async fetch(request,env){
    const data=await listing.json();
    const artifact=Array.isArray(data?.artifacts)?data.artifacts.find(a=>
     a.name==="aion-roteiro-15s"&&!a.expired&&Number.isSafeInteger(a.id)&&
-    a.size_in_bytes>0&&a.size_in_bytes<=25000000):null;
+    Number.isSafeInteger(a.size_in_bytes)&&a.size_in_bytes>0&&a.size_in_bytes<=25000000):null;
    if(!artifact)return json({erro:"Artefato indisponivel ou acima do limite de 25 MB"},404);
    const archiveUrl="https://api.github.com/repos/israelrodriguesnogueira-ai/ADL-MIDIA/actions/artifacts/"+artifact.id+"/zip";
    const redirect=await fetch(archiveUrl,{headers,redirect:"manual",signal:AbortSignal.timeout(10000)});
