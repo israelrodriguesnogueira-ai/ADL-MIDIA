@@ -1,5 +1,8 @@
-name: AION - homologacao 100 ciclos
+name: AION - homologacao isolada
 on:
+  push:
+    branches:
+      - aion/homologacao-100-ciclos-20261118
   workflow_dispatch:
 permissions:
   contents: read
@@ -12,21 +15,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Executar 100 ciclos e registrar resultados
+      - name: Executar 109 testes locais sem segredos ou deploy
         run: |
           set -euo pipefail
           mkdir -p relatorio
-          node --test tests/aion-homologacao-100-ciclos.test.mjs | tee relatorio/ciclos.log
+          node --test tests/aion-homologacao-100-ciclos.test.mjs tests/aion-seguranca-limites.test.mjs 2>&1 | tee relatorio/ciclos.log
           {
-            echo '## AION — 100 ciclos de homologação'
-            echo 'Escopo: executor local, controle de acesso sem credenciais, estados declarados e limites de mídia.'
-            echo 'Não comprova login autenticado, produção 3D nem deploy.'
-            echo 'Resultado detalhado no artefato ciclos.log.'
+            echo '## AION - homologacao isolada'
+            echo '109 testes definidos: 100 ciclos + 9 verificacoes de seguranca.'
+            echo 'Sem credenciais reais, provedores externos, deploy ou publicacao.'
+            echo 'Os testes nao comprovam audio, video, login Google ou integracoes reais.'
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: aion-homologacao-100-ciclos
+          name: aion-homologacao-isolada
           path: relatorio/
           retention-days: 7
           if-no-files-found: ignore
