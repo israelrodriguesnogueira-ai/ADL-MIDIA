@@ -18,3 +18,11 @@ test("comando de duracao fora do permitido nao executa render",async()=>{
  const response=await send("Criar vídeo de vestido preto de 99 segundos");
  assert.equal(response.status,400);
 });
+
+test("comando sem produto nao declara roteiro concluido",async()=>{
+ const response=await send("produza um video de 15 segundos");
+ assert.equal(response.status,200);
+ const result=await response.json();
+ assert.equal(result.status,"aguardando_executor");
+ assert.match(result.detalhe,/nenhuma tarefa externa foi executada/i);
+});
