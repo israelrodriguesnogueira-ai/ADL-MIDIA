@@ -32,7 +32,7 @@ export default {async fetch(request,env){
  const url=new URL(request.url);
  if(url.pathname==="/"&&request.method==="GET")return new Response(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AION — Ambiente experimental</title><style>body{font:16px system-ui;background:#101827;color:#f2f5fc;margin:0;padding:28px;line-height:1.6}main{max-width:680px;margin:auto}a{color:#9ccaff}section{background:#1d293b;padding:20px;border-radius:14px;margin:16px 0}</style></head><body><main><h1>AION — Ambiente experimental</h1><section><p>Este ambiente não é o AION de produção. O executor local possui recursos limitados de criação de texto, Markdown e diagnóstico técnico.</p><p>Operador de mídia: roteiro local disponível com autenticação. Renderização remota, financeiro, científico e Shopee ainda não estão conectados neste Preview.</p><p><a href="/health">Consultar estado do motor</a></p></section><section><h2>Segurança</h2><p>Comandos exigem autenticação por API. Não insira senhas, tokens ou chaves nesta página. A interface de comandos autenticados ainda não foi homologada.</p></section></main></body></html>`,{status:200,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff","content-security-policy":"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'","referrer-policy":"no-referrer"}});
  if(url.pathname==="/health"&&request.method==="GET")return json({status:"online",motor:"experimental",iaConfigurada:Boolean(env.AI_API_KEY&&env.AI_MODEL&&env.AI_ENABLED==="1")});
- if(!["/api/comando","/api/executar-local","/api/video/iniciar","/api/video/status","/api/video/artefato","/api/video/localizar"].includes(url.pathname))return json({erro:"Rota inexistente"},404);
+ if(!["/api/comando","/api/executar-local","/api/video/iniciar","/api/video/status","/api/video/artefato","/api/video/localizar","/api/video/baixar"].includes(url.pathname))return json({erro:"Rota inexistente"},404);
  if(request.method!=="POST")return json({erro:"Método não permitido"},405);
  if(!env.ION_API_ACCESS_TOKEN||request.headers.get("authorization")!==`Bearer ${env.ION_API_ACCESS_TOKEN}`)return json({erro:"Não autorizado"},401);
  const size=Number(request.headers.get("content-length")||0);if(size>16000)return json({erro:"Pedido muito grande"},413);
@@ -52,6 +52,50 @@ export default {async fetch(request,env){
   for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}
   body=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(bytes));
  }catch{return json({erro:"JSON inválido"},400)}
+ if(url.pathname==="/api/video/baixar") {
+  const runId=body?.runId;
+  if(!Number.isSafeInteger(runId)||runId<=0)return json({erro:"Identificador invalido"},400);
+  if(env.AION_RENDER_DISPATCH_ENABLED!=="1"||!env.AION_GITHUB_DISPATCH_TOKEN)
+   return json({status:"indisponivel",erro:"Download remoto desativado"},503);
+  const headers={"authorization":"Bearer "+env.AION_GITHUB_DISPATCH_TOKEN,
+   "accept":"application/vnd.github+json","user-agent":"aion-render-download"};
+  const prefix="https://api.github.com/repos/israelrodriguesnogueira-ai/ADL-MIDIA/actions/runs/";
+  try {
+   const runResponse=await fetch(prefix+runId,{headers,signal:AbortSignal.timeout(10000)});
+   if(!runResponse.ok)return json({erro:"Falha ao verificar execucao"},502);
+   const run=await runResponse.json();
+   if(run?.repository?.full_name!=="israelrodriguesnogueira-ai/ADL-MIDIA"||
+      run?.path!==".github/workflows/aion-roteiro-render.yml"||
+      run?.event!=="workflow_dispatch")return json({erro:"Execucao nao autorizada"},404);
+   if(run.status!=="completed"||run.conclusion!=="success")
+    return json({status:"aguardando",artefatoDisponivel:false},202);
+   const listing=await fetch(prefix+runId+"/artifacts?per_page=30",{headers,signal:AbortSignal.timeout(10000)});
+   if(!listing.ok)return json({erro:"Falha ao listar artefatos"},502);
+   const data=await listing.json();
+   const artifact=Array.isArray(data?.artifacts)?data.artifacts.find(a=>
+    a.name==="aion-roteiro-15s"&&!a.expired&&Number.isSafeInteger(a.id)&&
+    a.size_in_bytes>0&&a.size_in_bytes<=25000000):null;
+   if(!artifact)return json({erro:"Artefato indisponivel ou acima do limite de 25 MB"},404);
+   const archiveUrl="https://api.github.com/repos/israelrodriguesnogueira-ai/ADL-MIDIA/actions/artifacts/"+artifact.id+"/zip";
+   const redirect=await fetch(archiveUrl,{headers,redirect:"manual",signal:AbortSignal.timeout(10000)});
+   if(![301,302,303,307,308].includes(redirect.status))
+    return json({erro:"Arquivo nao disponibilizado pelo GitHub"},502);
+   const target=redirect.headers.get("location");
+   let signed;try{signed=new URL(target)}catch{return json({erro:"Destino de download invalido"},502)}
+   if(signed.protocol!=="https:"||!signed.hostname.endsWith(".blob.core.windows.net"))
+    return json({erro:"Destino de download nao autorizado"},502);
+   const archive=await fetch(signed.toString(),{redirect:"error",signal:AbortSignal.timeout(20000)});
+   if(!archive.ok||!archive.body)return json({erro:"Falha ao obter arquivo"},502);
+   const length=Number(archive.headers.get("content-length")||0);
+   if(length>25000000){await archive.body.cancel();return json({erro:"Arquivo excede limite"},413)}
+   return new Response(archive.body,{status:200,headers:{
+    "content-type":"application/zip",
+    "content-disposition":'attachment; filename="aion-video-'+runId+'.zip"',
+    "cache-control":"no-store","x-content-type-options":"nosniff",
+    "content-security-policy":"default-src 'none'; sandbox"
+   }});
+  }catch{return json({erro:"Falha no download protegido"},502)}
+ }
  if(url.pathname==="/api/video/localizar") {
   const id=body?.solicitacaoId;
   if(typeof id!=="string"||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))
