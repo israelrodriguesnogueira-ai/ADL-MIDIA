@@ -1,0 +1,15 @@
+<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AION Chat — Preview</title>
+<style>body{margin:0;background:#101827;color:#fff;font:16px system-ui}main{max-width:700px;margin:auto;padding:18px}textarea{box-sizing:border-box;width:100%;min-height:110px;resize:vertical}button,input{font:inherit;margin:5px;padding:8px}article{background:#1e293b;padding:12px;margin:10px 0;border-radius:10px;white-space:pre-wrap}audio,video{width:100%;max-width:100%}label{display:block;margin-top:12px}</style>
+<main><h1>AION — Chat experimental</h1><p>Prévia isolada, não é produção. Não insira senhas ou tokens de sua conta real. Este chat executa somente operadores locais e não envia arquivos à Cloudflare.</p>
+<label for="comando">Comando</label><textarea id="comando" maxlength="3000" placeholder="Ex.: Criar vídeo educativo de trânsito"></textarea><button id="enviar">Executar operador</button><button id="ouvir">Ouvir resposta</button><button id="parar">Parar voz</button><div id="historico" aria-live="polite"></div>
+<label for="arquivo">Foto, vídeo, áudio ou documento (prévia local)</label><input type="file" id="arquivo" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.md"><div id="anexos"></div><p>Vídeo e áudio: reprodução de anexos locais; renderização e síntese de áudio de servidor ainda não conectadas.</p></main>
+<script type="module">
+import {executarComandoChat} from '../integracoes/aion-ponte-chat-operadores.mjs';
+const $=id=>document.getElementById(id);let ultima='';
+const add=(who,text)=>{const a=document.createElement('article');a.textContent=who+': '+text;$('historico').append(a)};
+$('enviar').onclick=()=>{const cmd=$('comando').value.trim();if(!cmd)return;add('Você',cmd);try{const r=executarComandoChat(cmd);ultima=r.detalhe||r.erro||r.status;add('AION',JSON.stringify(r,null,2))}catch(e){add('Erro','Falha na execução local: '+e.message)}};
+$('ouvir').onclick=()=>{if(!('speechSynthesis'in window))return add('AION','Voz indisponível neste navegador');speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(ultima||'AION pronto');u.lang='pt-BR';speechSynthesis.speak(u)};
+$('parar').onclick=()=>{if('speechSynthesis'in window)speechSynthesis.cancel()};
+const urls=[];$('arquivo').onchange=e=>{const root=$('anexos');root.replaceChildren();const files=[...e.target.files];if(files.length>5)return add('AION','Limite de 5 anexos');for(const f of files){if(f.size>15*1024*1024){add('AION','Arquivo maior que 15 MB: '+f.name);continue}const item=document.createElement('article');item.textContent=f.name+' ('+Math.round(f.size/1024)+' KB)';if(/^(image|video|audio)\//.test(f.type)){const url=URL.createObjectURL(f);urls.push(url);const media=document.createElement(f.type.startsWith('image/')?'img':f.type.startsWith('video/')?'video':'audio');media.src=url;if(media.tagName==='IMG')media.style.maxWidth='100%';else media.controls=true;item.append(media)}root.append(item)}};
+window.addEventListener('pagehide',()=>urls.forEach(URL.revokeObjectURL));
+</script></html>
