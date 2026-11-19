@@ -23,6 +23,9 @@ test("status retorna somente metadados de workflow autorizado",async()=>{
   const result=await r.json();
   assert.equal(result.resultado,"success");
   assert.equal(result.artefatoVerificado,false);
+  assert.equal(result.renderizacaoConcluida,true);
+  assert.equal(result.videoDisponivel,false);
+  assert.match(result.proximaEtapa,/artefato/);
  }finally{globalThis.fetch=original}
 });
 test("status recusa workflow diferente",async()=>{
