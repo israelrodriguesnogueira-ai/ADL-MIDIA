@@ -13,6 +13,7 @@ on:
       - 'tests/aion-upload-privado.test.mjs'
       - 'tests/aion-download-privado.test.mjs'
       - 'tests/aion-fluxo-privado-integrado.test.mjs'
+      - 'tests/aion-preview-seguranca-deploy.test.mjs'
       - 'tests/aion-operadores-locais.test.mjs'
       - 'tests/aion-ponte-chat-operadores.test.mjs'
       - 'tests/aion-worker-operadores-route.test.mjs'
@@ -31,6 +32,7 @@ on:
       - 'tests/aion-upload-privado.test.mjs'
       - 'tests/aion-download-privado.test.mjs'
       - 'tests/aion-fluxo-privado-integrado.test.mjs'
+      - 'tests/aion-preview-seguranca-deploy.test.mjs'
       - 'tests/aion-operadores-locais.test.mjs'
       - 'tests/aion-ponte-chat-operadores.test.mjs'
       - 'tests/aion-worker-operadores-route.test.mjs'
@@ -49,4 +51,4 @@ jobs:
         with:
           node-version: '22'
       - name: Verificar laboratorio e upload privado
-        run: node --test tests/aion-laboratorio-multimidia.test.mjs tests/aion-upload-privado.test.mjs tests/aion-download-privado.test.mjs tests/aion-fluxo-privado-integrado.test.mjs tests/aion-operadores-locais.test.mjs tests/aion-ponte-chat-operadores.test.mjs tests/aion-worker-operadores-route.test.mjs tests/aion-chat-operadores-preview.test.mjs
+        run: node --test tests/aion-laboratorio-multimidia.test.mjs tests/aion-upload-privado.test.mjs tests/aion-download-privado.test.mjs tests/aion-fluxo-privado-integrado.test.mjs tests/aion-preview-seguranca-deploy.test.mjs tests/aion-operadores-locais.test.mjs tests/aion-ponte-chat-operadores.test.mjs tests/aion-worker-operadores-route.test.mjs tests/aion-chat-operadores-preview.test.mjs
