@@ -32,8 +32,13 @@ jobs:
           trap 'rm -rf "$frames"' EXIT
           mkdir -p saida
           blender -b -t 4 --python-exit-code 1 -P scripts/aion-video-3d.py -- --frames-dir "$frames"
-          ffmpeg -v error -framerate 12 -i "$frames/frame-%04d.png" -c:v libx264 -pix_fmt yuv420p -movflags +faststart saida/Aion-Vestido-3D.mp4
+          ffmpeg -v error -framerate 12 -i "$frames/frame-%04d.png" \
+            -f lavfi -i "sine=frequency=220:sample_rate=44100:duration=15" \
+            -filter_complex "[1:a]volume=0.04,afade=t=in:st=0:d=1,afade=t=out:st=14:d=1[a]" \
+            -map 0:v:0 -map "[a]" -c:v libx264 -pix_fmt yuv420p \
+            -c:a aac -b:a 96k -t 15 -movflags +faststart saida/Aion-Vestido-3D.mp4
           test "$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height,nb_frames -of csv=p=0 saida/Aion-Vestido-3D.mp4)" = "270,480,180"
+          test "$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 saida/Aion-Vestido-3D.mp4)" = "aac"
           ffmpeg -v error -xerror -i saida/Aion-Vestido-3D.mp4 -f null -
       - name: Salvar vídeo no endereço privado solicitado pelo Aion
         if: ${{ inputs.id != '' || inputs.token != '' }}
