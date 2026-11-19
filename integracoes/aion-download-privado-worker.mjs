@@ -5,7 +5,7 @@ export default {async fetch(request,env){
  if(request.method!=="GET")return respond({erro:"Metodo nao permitido"},405);
  if(!env.AION_UPLOAD_TOKEN||request.headers.get("authorization")!==`Bearer ${env.AION_UPLOAD_TOKEN}`)return respond({erro:"Nao autorizado"},401);
  if(!env.AION_UPLOAD_BUCKET||typeof env.AION_UPLOAD_BUCKET.get!=="function")return respond({erro:"Armazenamento privado nao configurado"},503);
- const match=/^\\/api\\/anexos\\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.exec(url.pathname);
+ const match=/^\/api\/anexos\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.exec(url.pathname);
  if(!match)return respond({erro:"Identificador invalido"},400);
  try{
   const obj=await env.AION_UPLOAD_BUCKET.get("privado/"+match[1].toLowerCase());
