@@ -33,7 +33,12 @@ test("consulta autenticada declara operadores nao conectados",async()=>{
   assert.equal(data.escopo,"executor_local_experimental");
   assert.equal(data.custoAdicional,0);
   assert.equal(data.operadores.length,5);
-  assert.equal(data.operadores.filter(o=>o.estado==="nao_conectado").length,4);
+  assert.equal(data.operadores.filter(o=>o.estado==="nao_conectado").length,3);
+  const midia=data.operadores.find(o=>o.nome==="midia");
+  assert.equal(midia.estado,"parcial");
+  assert.deepEqual(midia.capacidades,["criar_roteiro_video"]);
+  for(const nome of ["financeiro","cientifico","shopee"])
+    assert.equal(data.operadores.find(o=>o.nome===nome).estado,"nao_conectado");
 });
 test("executor nao permite shell mesmo com token valido",async()=>{
   const r=await post("/api/executar-local",{acao:"shell",comando:"ls"},"Bearer token-ficticio-de-teste");
