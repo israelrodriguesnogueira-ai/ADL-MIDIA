@@ -25,7 +25,31 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--saida", default="saida/ion-transito-15s.mp4")
     parser.add_argument("--voz", default="espeak", choices=["espeak", "piper"])
+    parser.add_argument("--roteiro-json", type=Path, help="Roteiro local JSON do operador midia")
     args = parser.parse_args()
+    scenes = SCENES
+    if args.roteiro_json:
+        data = json.loads(args.roteiro_json.read_text(encoding="utf-8"))
+        if data.get("tipo") != "roteiro_video" or data.get("duracaoSegundos") != DURATION:
+            raise SystemExit("Roteiro invalido: esperado roteiro_video de 15 segundos")
+        cenas = data.get("cenas")
+        if not isinstance(cenas, list) or not 1 <= len(cenas) <= 6:
+            raise SystemExit("Roteiro invalido: cenas ausentes ou excessivas")
+        cenas_validas = []
+        anterior = 0
+        for cena in cenas:
+            if not isinstance(cena, dict) or type(cena.get("inicio")) not in (int, float) or type(cena.get("fim")) not in (int, float):
+                raise SystemExit("Roteiro invalido: tempos ausentes")
+            if cena["inicio"] != anterior or not anterior < cena["fim"] <= DURATION:
+                raise SystemExit("Roteiro invalido: sequencia de tempos")
+            texto = cena.get("acao")
+            if not isinstance(texto, str) or not texto.strip() or len(texto) > 160 or any(ord(c) < 32 for c in texto):
+                raise SystemExit("Roteiro invalido: texto da cena")
+            cenas_validas.append((texto[:48].upper(), texto))
+            anterior = cena["fim"]
+        if anterior != DURATION:
+            raise SystemExit("Roteiro invalido: duracao final")
+        scenes = cenas_validas
     for command in (("ffmpeg", "ffprobe", "espeak-ng") if args.voz == "espeak" else ("ffmpeg", "ffprobe", "piper")):
         if not shutil.which(command):
             raise SystemExit(f"Dependencia ausente: {command}")
@@ -41,8 +65,8 @@ def main():
             "drawbox=x=325:y=310:w=70:h=610:color=0xffffff@0.65:t=fill",
             "drawbox=x=75:y=1010:w=570:h=10:color=yellow:t=fill",
         ]
-        for i, (heading, caption) in enumerate(SCENES):
-            start, end = i * DURATION / len(SCENES), (i + 1) * DURATION / len(SCENES)
+        for i, (heading, caption) in enumerate(scenes):
+            start, end = i * DURATION / len(scenes), (i + 1) * DURATION / len(SCENES)
             hfile = temp / f"title{i}.txt"
             cfile = temp / f"caption{i}.txt"
             hfile.write_text(heading, encoding="utf-8")
@@ -57,7 +81,7 @@ def main():
                 f"fontsize=23:x=(w-text_w)/2:y=1110:enable='{enable}'"
             )
         narration = temp / "narracao.wav"
-        full_text = " ".join(caption for _, caption in SCENES)
+        full_text = " ".join(caption for _, caption in scenes)
         if args.voz == "piper":
             import os
             model = os.environ.get("ION_PIPER_MODEL")

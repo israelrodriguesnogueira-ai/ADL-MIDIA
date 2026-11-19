@@ -1,0 +1,40 @@
+name: AION - integracao roteiro para MP4
+on:
+  pull_request:
+    paths:
+      - scripts/ion-video-gratuito.py
+      - integracoes/ion-executor-local.mjs
+      - .github/workflows/aion-roteiro-render.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar ferramentas locais gratuitas
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg espeak-ng fonts-dejavu-core
+      - name: Produzir roteiro a partir do operador
+        run: |
+          node --input-type=module <<'NODE'
+          import { executarLocal } from './integracoes/ion-executor-local.mjs';
+          import { writeFileSync } from 'node:fs';
+          const resposta = executarLocal({acao:'criar_roteiro_video',produto:'Vestido preto de alfaiataria',duracaoSegundos:15});
+          if (resposta.status !== 'concluido' || resposta.renderizado !== false) throw Error('Operador invalido');
+          writeFileSync('roteiro.json', resposta.artefato.conteudo);
+          NODE
+      - name: Renderizar MP4 com narracao sem API paga
+        run: python3 scripts/ion-video-gratuito.py --voz espeak --roteiro-json roteiro.json --saida saida/aion-roteiro-15s.mp4
+      - name: Validar duracao e fluxos
+        run: |
+          python3 scripts/validar-exportacao.py saida/aion-roteiro-15s.mp4 --exigir-audio
+      - name: Disponibilizar arquivo de teste privado ao workflow
+        uses: actions/upload-artifact@v4
+        with:
+          name: aion-roteiro-15s
+          path: saida/aion-roteiro-15s.mp4
+          retention-days: 1
