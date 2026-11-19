@@ -4,12 +4,14 @@ on:
     paths:
       - 'experimentos/aion-laboratorio-operadores-multimidia.html'
       - 'integracoes/aion-upload-privado-worker.mjs'
+      - 'integracoes/aion-download-privado-worker.mjs'
       - 'integracoes/aion-operadores-locais.mjs'
       - 'integracoes/aion-ponte-chat-operadores.mjs'
       - 'integracoes/ion-motor-worker.mjs'
       - 'experimentos/aion-chat-operadores-preview.html'
       - 'tests/aion-laboratorio-multimidia.test.mjs'
       - 'tests/aion-upload-privado.test.mjs'
+      - 'tests/aion-download-privado.test.mjs'
       - 'tests/aion-operadores-locais.test.mjs'
       - 'tests/aion-ponte-chat-operadores.test.mjs'
       - 'tests/aion-worker-operadores-route.test.mjs'
@@ -19,12 +21,14 @@ on:
     paths:
       - 'experimentos/aion-laboratorio-operadores-multimidia.html'
       - 'integracoes/aion-upload-privado-worker.mjs'
+      - 'integracoes/aion-download-privado-worker.mjs'
       - 'integracoes/aion-operadores-locais.mjs'
       - 'integracoes/aion-ponte-chat-operadores.mjs'
       - 'integracoes/ion-motor-worker.mjs'
       - 'experimentos/aion-chat-operadores-preview.html'
       - 'tests/aion-laboratorio-multimidia.test.mjs'
       - 'tests/aion-upload-privado.test.mjs'
+      - 'tests/aion-download-privado.test.mjs'
       - 'tests/aion-operadores-locais.test.mjs'
       - 'tests/aion-ponte-chat-operadores.test.mjs'
       - 'tests/aion-worker-operadores-route.test.mjs'
@@ -43,4 +47,4 @@ jobs:
         with:
           node-version: '22'
       - name: Verificar laboratorio e upload privado
-        run: node --test tests/aion-laboratorio-multimidia.test.mjs tests/aion-upload-privado.test.mjs tests/aion-operadores-locais.test.mjs tests/aion-ponte-chat-operadores.test.mjs tests/aion-worker-operadores-route.test.mjs tests/aion-chat-operadores-preview.test.mjs
+        run: node --test tests/aion-laboratorio-multimidia.test.mjs tests/aion-upload-privado.test.mjs tests/aion-download-privado.test.mjs tests/aion-operadores-locais.test.mjs tests/aion-ponte-chat-operadores.test.mjs tests/aion-worker-operadores-route.test.mjs tests/aion-chat-operadores-preview.test.mjs
