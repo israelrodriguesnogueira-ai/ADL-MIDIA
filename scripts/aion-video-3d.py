@@ -98,9 +98,25 @@ def main():
     dress.keyframe_insert(data_path="rotation_euler", frame=1)
     dress.rotation_euler.z = math.tau
     dress.keyframe_insert(data_path="rotation_euler", frame=scene.frame_end + 1)
-    for curve in dress.animation_data.action.fcurves:
-        for point in curve.keyframe_points:
-            point.interpolation = "LINEAR"
+    # Blender 4.4+ may store animation curves in layered actions rather than action.fcurves.
+    # Use a linear interpolation mode at keyframe creation time where supported,
+    # and avoid crashing the render when legacy fcurves are unavailable.
+    action = dress.animation_data.action
+    curves = getattr(action, "fcurves", None)
+    if curves is not None:
+        for curve in curves:
+            for point in curve.keyframe_points:
+                point.interpolation = "LINEAR"
+    else:
+        # For layered actions, configure curves via action slots/channelbags.
+        for layer in getattr(action, "layers", []):
+            for strip in getattr(layer, "strips", []):
+                for slot in getattr(action, "slots", []):
+                    bag = strip.channelbag(slot, ensure=False)
+                    if bag is not None:
+                        for curve in bag.fcurves:
+                            for point in curve.keyframe_points:
+                                point.interpolation = "LINEAR"
     bpy.ops.render.render(animation=True)
 
 
