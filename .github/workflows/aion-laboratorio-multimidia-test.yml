@@ -1,0 +1,56 @@
+name: AION - laboratorio multimidia isolado
+on:
+  push:
+    paths:
+      - 'experimentos/aion-laboratorio-operadores-multimidia.html'
+      - 'integracoes/aion-upload-privado-worker.mjs'
+      - 'integracoes/aion-download-privado-worker.mjs'
+      - 'integracoes/aion-operadores-locais.mjs'
+      - 'integracoes/aion-ponte-chat-operadores.mjs'
+      - 'integracoes/ion-motor-worker.mjs'
+      - 'experimentos/aion-chat-operadores-preview.html'
+      - 'tests/aion-laboratorio-multimidia.test.mjs'
+      - 'tests/aion-upload-privado.test.mjs'
+      - 'tests/aion-upload-validacao-tamanho.test.mjs'
+      - 'tests/aion-download-privado.test.mjs'
+      - 'tests/aion-fluxo-privado-integrado.test.mjs'
+      - 'tests/aion-preview-seguranca-deploy.test.mjs'
+      - 'tests/aion-operadores-locais.test.mjs'
+      - 'tests/aion-ponte-chat-operadores.test.mjs'
+      - 'tests/aion-worker-operadores-route.test.mjs'
+      - 'tests/aion-chat-operadores-preview.test.mjs'
+      - '.github/workflows/aion-laboratorio-multimidia-test.yml'
+  pull_request:
+    paths:
+      - 'experimentos/aion-laboratorio-operadores-multimidia.html'
+      - 'integracoes/aion-upload-privado-worker.mjs'
+      - 'integracoes/aion-download-privado-worker.mjs'
+      - 'integracoes/aion-operadores-locais.mjs'
+      - 'integracoes/aion-ponte-chat-operadores.mjs'
+      - 'integracoes/ion-motor-worker.mjs'
+      - 'experimentos/aion-chat-operadores-preview.html'
+      - 'tests/aion-laboratorio-multimidia.test.mjs'
+      - 'tests/aion-upload-privado.test.mjs'
+      - 'tests/aion-upload-validacao-tamanho.test.mjs'
+      - 'tests/aion-download-privado.test.mjs'
+      - 'tests/aion-fluxo-privado-integrado.test.mjs'
+      - 'tests/aion-preview-seguranca-deploy.test.mjs'
+      - 'tests/aion-operadores-locais.test.mjs'
+      - 'tests/aion-ponte-chat-operadores.test.mjs'
+      - 'tests/aion-worker-operadores-route.test.mjs'
+      - 'tests/aion-chat-operadores-preview.test.mjs'
+      - '.github/workflows/aion-laboratorio-multimidia-test.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  testes-isolados:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar laboratorio e upload privado
+        run: node --test tests/aion-laboratorio-multimidia.test.mjs tests/aion-upload-privado.test.mjs tests/aion-upload-validacao-tamanho.test.mjs tests/aion-download-privado.test.mjs tests/aion-fluxo-privado-integrado.test.mjs tests/aion-preview-seguranca-deploy.test.mjs tests/aion-operadores-locais.test.mjs tests/aion-ponte-chat-operadores.test.mjs tests/aion-worker-operadores-route.test.mjs tests/aion-chat-operadores-preview.test.mjs

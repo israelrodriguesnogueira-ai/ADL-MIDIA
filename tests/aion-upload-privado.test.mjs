@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import worker from '../integracoes/aion-upload-privado-worker.mjs';
+const endpoint='https://example.invalid/api/anexos';
+const req=(headers={},body='arquivo')=>new Request(endpoint,{method:'POST',headers,body});
+const token='token-de-teste';
+const env={AION_UPLOAD_TOKEN:token,AION_UPLOAD_BUCKET:{put:async()=>{}}};
+test('bloqueia upload anonimo',async()=>assert.equal((await worker.fetch(req({'content-type':'image/png'}),env)).status,401));
+test('bloqueia formato nao autorizado',async()=>assert.equal((await worker.fetch(req({authorization:'Bearer '+token,'content-type':'text/html'}),env)).status,415));
+test('bloqueia falta de bucket privado',async()=>assert.equal((await worker.fetch(req({authorization:'Bearer '+token,'content-type':'image/png'}),{AION_UPLOAD_TOKEN:token})).status,503));
+test('armazena somente com token e bucket',async()=>{let stored=false;const response=await worker.fetch(req({authorization:'Bearer '+token,'content-type':'image/png'}),{...env,AION_UPLOAD_BUCKET:{put:async()=>{stored=true}}});assert.equal(response.status,201);assert.equal(stored,true)});
+test('bloqueia upload acima de 15 MB',async()=>{const response=await worker.fetch(req({authorization:'Bearer '+token,'content-type':'image/png','content-length':String(16*1024*1024)}),env);assert.equal(response.status,413)});
