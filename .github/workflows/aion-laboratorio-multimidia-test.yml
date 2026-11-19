@@ -3,18 +3,22 @@ on:
   push:
     paths:
       - 'experimentos/aion-laboratorio-operadores-multimidia.html'
+      - 'integracoes/aion-upload-privado-worker.mjs'
       - 'tests/aion-laboratorio-multimidia.test.mjs'
+      - 'tests/aion-upload-privado.test.mjs'
       - '.github/workflows/aion-laboratorio-multimidia-test.yml'
   pull_request:
     paths:
       - 'experimentos/aion-laboratorio-operadores-multimidia.html'
+      - 'integracoes/aion-upload-privado-worker.mjs'
       - 'tests/aion-laboratorio-multimidia.test.mjs'
+      - 'tests/aion-upload-privado.test.mjs'
       - '.github/workflows/aion-laboratorio-multimidia-test.yml'
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  testes-estaticos:
+  testes-isolados:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -22,5 +26,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Verificar 20 requisitos estruturais e ausencia de upload remoto
-        run: node --test tests/aion-laboratorio-multimidia.test.mjs
+      - name: Verificar laboratorio e upload privado
+        run: node --test tests/aion-laboratorio-multimidia.test.mjs tests/aion-upload-privado.test.mjs
