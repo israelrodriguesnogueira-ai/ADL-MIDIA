@@ -1,4 +1,5 @@
 name: AION - integracao roteiro para MP4
+run-name: 'AION video ${{ inputs.solicitacao_id || github.run_id }}'
 on:
   pull_request:
     paths:
@@ -7,6 +8,10 @@ on:
       - .github/workflows/aion-roteiro-render.yml
   workflow_dispatch:
     inputs:
+      solicitacao_id:
+        description: 'Identificador opaco da solicitacao'
+        required: false
+        type: string
       produto:
         description: 'Descrição do produto (sem dados pessoais)'
         required: true
