@@ -170,7 +170,7 @@ export default {async fetch(request,env){
  }
  if(url.pathname==="/api/video/iniciar") {
   const produto=body?.produto;
-  if(typeof produto!=="string"||!produto.trim()||produto.length>120||/[\\r\\n]/.test(produto))
+  if(typeof produto!=="string"||!produto.trim()||produto.length>120||/[\r\n]/.test(produto))
    return json({erro:"Descricao de produto invalida"},400);
   if(env.AION_RENDER_DISPATCH_ENABLED!=="1"||!env.AION_GITHUB_DISPATCH_TOKEN)
    return json({status:"indisponivel",erro:"Disparo remoto desativado ou sem credencial do servidor"},503);
