@@ -173,7 +173,7 @@ export default {async fetch(request,env){
       run?.event!=="workflow_dispatch")return json({erro:"Execucao nao corresponde ao renderizador autorizado"},404);
    return json({status:"consultado",runId,processamento:run.status,
     resultado:run.conclusion??null,concluido:run.status==="completed",
-    videoDisponivel:run.conclusion==="success",artefatoVerificado:false});
+    renderizacaoConcluida:run.conclusion==="success",videoDisponivel:false,artefatoVerificado:false,proximaEtapa:"Consultar /api/video/artefato para confirmar a existencia do arquivo"});
   }catch{return json({status:"erro",erro:"Falha na consulta do processamento"},502)}
  }
  if(url.pathname==="/api/video/iniciar") {
