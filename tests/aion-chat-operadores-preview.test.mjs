@@ -1,0 +1,4 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';
+const html=readFileSync(new URL('../experimentos/aion-chat-operadores-preview.html',import.meta.url),'utf8');
+for(const [name,pattern] of [['ponte de operadores',/import \{executarComandoChat\}/],['acionamento do chat',/executarComandoChat\(cmd\)/],['resposta exibida',/JSON\.stringify\(r,null,2\)/],['sintese de voz',/SpeechSynthesisUtterance/],['reproducao de video',/media\.controls=true/],['selecao de arquivos',/type="file"/],['limite de cinco anexos',/files\.length>5/],['limite de 15 MB',/15\*1024\*1024/],['liberacao de memoria',/revokeObjectURL/]])test(name,()=>assert.match(html,pattern));
+test('interface nao faz upload remoto',()=>assert.doesNotMatch(html,/\bfetch\s*\(|XMLHttpRequest/));
