@@ -88,7 +88,15 @@ export default {async fetch(request,env){
    if(!archive.ok||!archive.body)return json({erro:"Falha ao obter arquivo"},502);
    const length=Number(archive.headers.get("content-length")||0);
    if(length>25000000){await archive.body.cancel();return json({erro:"Arquivo excede limite"},413)}
-   return new Response(archive.body,{status:200,headers:{
+   let transferred=0;
+   const bounded=new TransformStream({
+    transform(chunk,controller){
+     transferred+=chunk.byteLength;
+     if(transferred>25000000){controller.error(new Error("Arquivo excede limite de 25 MB"));return}
+     controller.enqueue(chunk);
+    }
+   });
+   return new Response(archive.body.pipeThrough(bounded),{status:200,headers:{
     "content-type":"application/zip",
     "content-disposition":'attachment; filename="aion-video-'+runId+'.zip"',
     "cache-control":"no-store","x-content-type-options":"nosniff",
