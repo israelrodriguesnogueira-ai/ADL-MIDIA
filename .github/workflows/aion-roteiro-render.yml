@@ -6,6 +6,12 @@ on:
       - integracoes/ion-executor-local.mjs
       - .github/workflows/aion-roteiro-render.yml
   workflow_dispatch:
+    inputs:
+      produto:
+        description: 'Descrição do produto (sem dados pessoais)'
+        required: true
+        type: string
+        default: 'Vestido preto de alfaiataria'
 permissions:
   contents: read
 jobs:
@@ -19,11 +25,15 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends ffmpeg espeak-ng fonts-dejavu-core
       - name: Produzir roteiro a partir do operador
+        env:
+          AION_PRODUTO: ${{ inputs.produto || 'Vestido preto de alfaiataria' }}
         run: |
           node --input-type=module <<'NODE'
           import { executarLocal } from './integracoes/ion-executor-local.mjs';
           import { writeFileSync } from 'node:fs';
-          const resposta = executarLocal({acao:'criar_roteiro_video',produto:'Vestido preto de alfaiataria',duracaoSegundos:15});
+          const produto = process.env.AION_PRODUTO;
+          if (typeof produto !== 'string' || !produto.trim() || produto.length > 120 || /[\r\n]/.test(produto)) throw Error('Descricao invalida');
+          const resposta = executarLocal({acao:'criar_roteiro_video',produto,duracaoSegundos:15});
           if (resposta.status !== 'concluido' || resposta.renderizado !== false) throw Error('Operador invalido');
           writeFileSync('roteiro.json', resposta.artefato.conteudo);
           NODE
