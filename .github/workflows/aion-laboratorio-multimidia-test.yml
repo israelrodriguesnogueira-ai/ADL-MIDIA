@@ -7,11 +7,13 @@ on:
       - 'integracoes/aion-operadores-locais.mjs'
       - 'integracoes/aion-ponte-chat-operadores.mjs'
       - 'integracoes/ion-motor-worker.mjs'
+      - 'experimentos/aion-chat-operadores-preview.html'
       - 'tests/aion-laboratorio-multimidia.test.mjs'
       - 'tests/aion-upload-privado.test.mjs'
       - 'tests/aion-operadores-locais.test.mjs'
       - 'tests/aion-ponte-chat-operadores.test.mjs'
       - 'tests/aion-worker-operadores-route.test.mjs'
+      - 'tests/aion-chat-operadores-preview.test.mjs'
       - '.github/workflows/aion-laboratorio-multimidia-test.yml'
   pull_request:
     paths:
@@ -20,11 +22,13 @@ on:
       - 'integracoes/aion-operadores-locais.mjs'
       - 'integracoes/aion-ponte-chat-operadores.mjs'
       - 'integracoes/ion-motor-worker.mjs'
+      - 'experimentos/aion-chat-operadores-preview.html'
       - 'tests/aion-laboratorio-multimidia.test.mjs'
       - 'tests/aion-upload-privado.test.mjs'
       - 'tests/aion-operadores-locais.test.mjs'
       - 'tests/aion-ponte-chat-operadores.test.mjs'
       - 'tests/aion-worker-operadores-route.test.mjs'
+      - 'tests/aion-chat-operadores-preview.test.mjs'
       - '.github/workflows/aion-laboratorio-multimidia-test.yml'
   workflow_dispatch:
 permissions:
@@ -39,4 +43,4 @@ jobs:
         with:
           node-version: '22'
       - name: Verificar laboratorio e upload privado
-        run: node --test tests/aion-laboratorio-multimidia.test.mjs tests/aion-upload-privado.test.mjs tests/aion-operadores-locais.test.mjs tests/aion-ponte-chat-operadores.test.mjs tests/aion-worker-operadores-route.test.mjs
+        run: node --test tests/aion-laboratorio-multimidia.test.mjs tests/aion-upload-privado.test.mjs tests/aion-operadores-locais.test.mjs tests/aion-ponte-chat-operadores.test.mjs tests/aion-worker-operadores-route.test.mjs tests/aion-chat-operadores-preview.test.mjs
