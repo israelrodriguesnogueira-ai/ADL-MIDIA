@@ -9,7 +9,7 @@ const json=(value,status=200)=>new Response(JSON.stringify(value),{status,header
 function responderArtefato(resultado,download) {
  if(!download || resultado.status!=="concluido" || !resultado.artefato) return null;
  const {nome,tipo,conteudo}=resultado.artefato;
- if(!["ion-documento.txt","ion-documento.md"].includes(nome) || typeof conteudo!=="string") return null;
+ if(!["ion-documento.txt","ion-documento.md","ion-roteiro-video.json"].includes(nome) || typeof conteudo!=="string") return null;
  return new Response(conteudo,{status:200,headers:{
   "content-type":tipo,"content-disposition":'attachment; filename="'+nome+'"',
   "cache-control":"no-store","x-content-type-options":"nosniff",
@@ -30,7 +30,7 @@ function classify(command){
 }
 export default {async fetch(request,env){
  const url=new URL(request.url);
- if(url.pathname==="/"&&request.method==="GET")return new Response(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AION — Ambiente experimental</title><style>body{font:16px system-ui;background:#101827;color:#f2f5fc;margin:0;padding:28px;line-height:1.6}main{max-width:680px;margin:auto}a{color:#9ccaff}section{background:#1d293b;padding:20px;border-radius:14px;margin:16px 0}</style></head><body><main><h1>AION — Ambiente experimental</h1><section><p>Este ambiente não é o AION de produção. O executor local possui recursos limitados de criação de texto, Markdown e diagnóstico técnico.</p><p>Operadores de mídia, financeiro, científico e Shopee ainda não estão conectados neste Preview.</p><p><a href="/health">Consultar estado do motor</a></p></section><section><h2>Segurança</h2><p>Comandos exigem autenticação por API. Não insira senhas, tokens ou chaves nesta página. A interface de comandos autenticados ainda não foi homologada.</p></section></main></body></html>`,{status:200,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff","content-security-policy":"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'","referrer-policy":"no-referrer"}});
+ if(url.pathname==="/"&&request.method==="GET")return new Response(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AION — Ambiente experimental</title><style>body{font:16px system-ui;background:#101827;color:#f2f5fc;margin:0;padding:28px;line-height:1.6}main{max-width:680px;margin:auto}a{color:#9ccaff}section{background:#1d293b;padding:20px;border-radius:14px;margin:16px 0}</style></head><body><main><h1>AION — Ambiente experimental</h1><section><p>Este ambiente não é o AION de produção. O executor local possui recursos limitados de criação de texto, Markdown e diagnóstico técnico.</p><p>Operador de mídia: roteiro local disponível com autenticação. Renderização remota, financeiro, científico e Shopee ainda não estão conectados neste Preview.</p><p><a href="/health">Consultar estado do motor</a></p></section><section><h2>Segurança</h2><p>Comandos exigem autenticação por API. Não insira senhas, tokens ou chaves nesta página. A interface de comandos autenticados ainda não foi homologada.</p></section></main></body></html>`,{status:200,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff","content-security-policy":"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'","referrer-policy":"no-referrer"}});
  if(url.pathname==="/health"&&request.method==="GET")return json({status:"online",motor:"experimental",iaConfigurada:Boolean(env.AI_API_KEY&&env.AI_MODEL&&env.AI_ENABLED==="1")});
  if(!["/api/comando","/api/executar-local"].includes(url.pathname))return json({erro:"Rota inexistente"},404);
  if(request.method!=="POST")return json({erro:"Método não permitido"},405);
@@ -66,6 +66,16 @@ export default {async fetch(request,env){
   const arquivo=responderArtefato(resultado,url.searchParams.get("download")==="1");
   if(arquivo)return arquivo;
   return json({...resultado,origem:"comando_natural",operador:"desenvolvimento"},resultado.status==="concluido"?200:400);
+ }
+ const comandoVideo=/\\b(?:v[ií]deo|video|clipe)\\b/i.test(comando);
+ if(comandoVideo) {
+  const duracao=Number(comando.match(/(\\d{1,3})\\s*(?:segundos?|s\\b)/i)?.[1]||15);
+  const produto=comando.replace(/\\b(?:criar|fa[cç]a|gerar|produzir|um|uma|v[ií]deo|video|clipe|de|do|da|com|dura[cç][aã]o|segundos?|vertical)\\b/gi," ").replace(/\\b\\d{1,3}\\b/g," ").replace(/\\s+/g," ").trim();
+  const resultado=executarLocal({acao:"criar_roteiro_video",produto,duracaoSegundos:duracao});
+  const arquivo=responderArtefato(resultado,url.searchParams.get("download")==="1");
+  if(arquivo)return arquivo;
+  return json({...resultado,origem:"comando_natural",operador:"midia",renderizado:false},
+    resultado.status==="concluido"?200:400);
  }
  const roteamento=identificarOperador(comando);
  const plano={...classify(comando),operador:roteamento.operador};
