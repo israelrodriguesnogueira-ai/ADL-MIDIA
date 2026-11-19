@@ -13,7 +13,7 @@ test("consulta de MP4 confirma metadados sem expor token",async()=>{
   chamadas++;
   assert.equal(options.headers.authorization,"Bearer segredo");
   if(String(url).endsWith("/artifacts?per_page=30"))
-   return Response.json({artifacts:[{name:"aion-roteiro-15s",expired:false,size_in_bytes:104381,expires_at:"2026-11-20T00:00:00Z"}]});
+   return Response.json({artifacts:[{id:55,name:"aion-roteiro-15s",expired:false,size_in_bytes:104381,expires_at:"2026-11-20T00:00:00Z"}]});
   return Response.json({repository:{full_name:"israelrodriguesnogueira-ai/ADL-MIDIA"},path:".github/workflows/aion-roteiro-render.yml",event:"workflow_dispatch",status:"completed",conclusion:"success"});
  };
  try{
@@ -30,4 +30,18 @@ test("workflow nao autorizado nao permite listar artefatos",async()=>{
  globalThis.fetch=async()=>{chamadas++;return Response.json({repository:{full_name:"outro/repositorio"},path:".github/workflows/aion-roteiro-render.yml",event:"workflow_dispatch",status:"completed",conclusion:"success"})};
  try{assert.equal((await send(123)).status,404);assert.equal(chamadas,1)}
  finally{globalThis.fetch=original}
+});
+
+test("artefato acima de 25 MB nao e declarado disponivel",async()=>{
+ const original=globalThis.fetch;
+ globalThis.fetch=async(url)=>{
+  if(String(url).endsWith("/artifacts?per_page=30"))
+   return Response.json({artifacts:[{id:55,name:"aion-roteiro-15s",expired:false,size_in_bytes:25000001}]});
+  return Response.json({repository:{full_name:"israelrodriguesnogueira-ai/ADL-MIDIA"},path:".github/workflows/aion-roteiro-render.yml",event:"workflow_dispatch",status:"completed",conclusion:"success"});
+ };
+ try{
+  const response=await send(123);
+  assert.equal(response.status,404);
+  assert.equal((await response.json()).artefatoDisponivel,false);
+ }finally{globalThis.fetch=original}
 });
