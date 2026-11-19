@@ -202,10 +202,10 @@ export default {async fetch(request,env){
   if(arquivo)return arquivo;
   return json({...resultado,origem:"comando_natural",operador:"desenvolvimento"},resultado.status==="concluido"?200:400);
  }
- const comandoVideo=/\\b(?:v[ií]deo|video|clipe)\\b/i.test(comando);
+ const comandoVideo=/\b(?:v[ií]deo|video|clipe)\b/i.test(comando);
  if(comandoVideo) {
-  const duracao=Number(comando.match(/(\\d{1,3})\\s*(?:segundos?|s\\b)/i)?.[1]||15);
-  const produto=comando.replace(/\\b(?:criar|fa[cç]a|gerar|produzir|um|uma|v[ií]deo|video|clipe|de|do|da|com|dura[cç][aã]o|segundos?|vertical)\\b/gi," ").replace(/\\b\\d{1,3}\\b/g," ").replace(/\\s+/g," ").trim();
+  const duracao=Number(comando.match(/(\d{1,3})\s*(?:segundos?|s\b)/i)?.[1]||15);
+  const produto=comando.replace(/\b(?:criar|fa[cç]a|gerar|produzir|um|uma|v[ií]deo|video|clipe|de|do|da|com|dura[cç][aã]o|segundos?|vertical)\b/gi," ").replace(/\b\d{1,3}\b/g," ").replace(/\s+/g," ").trim();
   const resultado=executarLocal({acao:"criar_roteiro_video",produto,duracaoSegundos:duracao});
   const arquivo=responderArtefato(resultado,url.searchParams.get("download")==="1");
   if(arquivo)return arquivo;
