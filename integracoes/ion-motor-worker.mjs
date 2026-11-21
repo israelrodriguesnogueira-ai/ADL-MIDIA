@@ -197,7 +197,9 @@ export default {async fetch(request,env){
     mensagem:"Workflow solicitado; aguarde o processamento e a validacao do MP4.",custoAdicionalContratado:0},202);
   }catch{return json({status:"erro",erro:"Falha de comunicacao com o renderizador"},502)}
  }
- // /api/comando e /api/executar usam a mesma trilha autenticada de comandos.\n // /api/executar-local permanece separado por ser um contrato de artefatos locais.\n if(url.pathname==="/api/executar-local") {
+ // /api/comando e /api/executar compartilham o mesmo despacho autenticado.
+ // /api/executar-local preserva o contrato de artefatos locais.
+ if(url.pathname==="/api/executar-local") {
   const resultado=executarLocal(body);
   const arquivo=responderArtefato(resultado,url.searchParams.get("download")==="1");
   if(arquivo)return arquivo;
