@@ -32,7 +32,7 @@ export default {async fetch(request,env){
  const url=new URL(request.url);
  if(url.pathname==="/"&&request.method==="GET")return new Response(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AION — Ambiente experimental</title><style>body{font:16px system-ui;background:#101827;color:#f2f5fc;margin:0;padding:28px;line-height:1.6}main{max-width:680px;margin:auto}a{color:#9ccaff}section{background:#1d293b;padding:20px;border-radius:14px;margin:16px 0}</style></head><body><main><h1>AION — Ambiente experimental</h1><section><p>Este ambiente não é o AION de produção. O executor local possui recursos limitados de criação de texto, Markdown e diagnóstico técnico.</p><p>Operador de mídia: roteiro local disponível com autenticação. Renderização remota, financeiro, científico e Shopee ainda não estão conectados neste Preview.</p><p><a href="/health">Consultar estado do motor</a></p></section><section><h2>Segurança</h2><p>Comandos exigem autenticação por API. Não insira senhas, tokens ou chaves nesta página. A interface de comandos autenticados ainda não foi homologada.</p></section></main></body></html>`,{status:200,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff","content-security-policy":"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'","referrer-policy":"no-referrer"}});
  if(url.pathname==="/health"&&request.method==="GET")return json({status:"online",motor:"experimental",prontoParaProducao:false,autenticacaoProprietarioIntegrada:false,interfaceConectada:false,renderRemotoConfigurado:env.AION_RENDER_DISPATCH_ENABLED==="1"&&Boolean(env.AION_GITHUB_DISPATCH_TOKEN),iaConfigurada:Boolean(env.AI_API_KEY&&env.AI_MODEL&&env.AI_ENABLED==="1")});
- if(!["/api/comando","/api/executar-local","/api/video/iniciar","/api/video/status","/api/video/artefato","/api/video/localizar","/api/video/baixar"].includes(url.pathname))return json({erro:"Rota inexistente"},404);
+ if(!["/api/comando","/api/executar","/api/executar-local","/api/video/iniciar","/api/video/status","/api/video/artefato","/api/video/localizar","/api/video/baixar"].includes(url.pathname))return json({erro:"Rota inexistente"},404);
  if(request.method!=="POST")return json({erro:"Método não permitido"},405);
  if(!env.ION_API_ACCESS_TOKEN||request.headers.get("authorization")!==`Bearer ${env.ION_API_ACCESS_TOKEN}`)return json({erro:"Não autorizado"},401);
  const size=Number(request.headers.get("content-length")||0);if(size>16000)return json({erro:"Pedido muito grande"},413);
@@ -197,6 +197,8 @@ export default {async fetch(request,env){
     mensagem:"Workflow solicitado; aguarde o processamento e a validacao do MP4.",custoAdicionalContratado:0},202);
   }catch{return json({status:"erro",erro:"Falha de comunicacao com o renderizador"},502)}
  }
+ // /api/comando e /api/executar compartilham o mesmo despacho autenticado.
+ // /api/executar-local preserva o contrato de artefatos locais.
  if(url.pathname==="/api/executar-local") {
   const resultado=executarLocal(body);
   const arquivo=responderArtefato(resultado,url.searchParams.get("download")==="1");
