@@ -1,0 +1,19 @@
+name: ION Android - validar interface
+on:
+  pull_request:
+    paths:
+      - 'android/**'
+      - '.github/workflows/ion-android-validacao.yml'
+  push:
+    paths:
+      - 'android/**'
+      - '.github/workflows/ion-android-validacao.yml'
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validar contrato da interface Android
+        run: node android/test-interface.mjs
