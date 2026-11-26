@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ADL Mídia — Teste de áudio</title>
+<style>body{font:16px system-ui;background:#101827;color:white;max-width:760px;margin:auto;padding:20px}label{display:block;margin-top:16px}input,button{padding:12px;max-width:100%;box-sizing:border-box}button{background:#8bc3ff;border:0;border-radius:8px;font-weight:bold;margin-top:18px}canvas,video{display:block;width:min(100%,300px);margin:18px auto}p{color:#c8d4e5}</style></head>
+<body><h1>ADL Mídia — teste de trilha e exportação</h1><p>Protótipo isolado: usa somente áudio e imagem selecionados no seu aparelho. Não utiliza APIs pagas nem modifica o gerador publicado.</p>
+<label>Imagem JPG/PNG/WebP <input id="image" type="file" accept="image/jpeg,image/png,image/webp"></label>
+<label>Trilha de áudio MP3/WAV/OGG (use apenas áudio autorizado) <input id="audio" type="file" accept="audio/*"></label>
+<label>Texto do vídeo <input id="caption" value="ADL Mídia — seu próximo vídeo" maxlength="100"></label>
+<button id="go">Gerar teste de 5 segundos</button><p id="status" role="status">Pronto.</p>
+<canvas id="canvas" width="540" height="960"></canvas><video id="preview" controls playsinline></video>
+<script>
+const el=id=>document.getElementById(id),canvas=el('canvas'),ctx=canvas.getContext('2d');
+let picture=null;const draw=()=>{ctx.fillStyle='#18283f';ctx.fillRect(0,0,540,960);if(picture){const s=Math.max(540/picture.width,960/picture.height),w=picture.width*s,h=picture.height*s;ctx.drawImage(picture,(540-w)/2,(960-h)/2,w,h)}ctx.fillStyle='rgba(0,0,0,.45)';ctx.fillRect(0,730,540,150);ctx.fillStyle='white';ctx.font='bold 30px system-ui';ctx.textAlign='center';const txt=el('caption').value;ctx.fillText(txt.slice(0,28),270,800);if(txt.length>28)ctx.fillText(txt.slice(28,55),270,845)};
+el('image').onchange=async()=>{const f=el('image').files[0];if(!f)return;if(!['image/jpeg','image/png','image/webp'].includes(f.type)||f.size>10000000){el('status').textContent='Imagem inválida ou acima de 10 MB';return}const url=URL.createObjectURL(f),img=new Image();try{await new Promise((ok,no)=>{img.onload=ok;img.onerror=no;img.src=url});picture=img;draw()}catch{el('status').textContent='Não foi possível abrir a imagem'}finally{URL.revokeObjectURL(url)}};
+el('caption').oninput=draw;draw();
+el('go').onclick=async()=>{const button=el('go');button.disabled=true;let context,stream,source,url,recorder;try{
+if(!window.MediaRecorder||!canvas.captureStream)throw Error('Este navegador não oferece gravação de vídeo.');
+const file=el('audio').files[0];if(!file)throw Error('Escolha uma trilha de áudio autorizada.');
+if(file.size>20000000)throw Error('Áudio acima de 20 MB.');
+const audio=new Audio();url=URL.createObjectURL(file);audio.src=url;audio.loop=true;audio.preload='auto';await new Promise((ok,no)=>{audio.oncanplay=ok;audio.onerror=()=>no(Error('Áudio não suportado'));audio.load()});
+context=new (window.AudioContext||window.webkitAudioContext)();await context.resume();
+const dest=context.createMediaStreamDestination();source=context.createMediaElementSource(audio);source.connect(dest);
+stream=canvas.captureStream(20);const mixed=new MediaStream([...stream.getVideoTracks(),...dest.stream.getAudioTracks()]);
+const mime=['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4','video/webm;codecs=vp8,opus','video/webm'].find(x=>MediaRecorder.isTypeSupported(x));if(!mime)throw Error('Não há formato de vídeo com áudio suportado.');
+const chunks=[];recorder=new MediaRecorder(mixed,{mimeType:mime});recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
+const done=new Promise((ok,no)=>{recorder.onstop=ok;recorder.onerror=()=>no(Error('Erro na gravação'))});draw();recorder.start(250);await audio.play();el('status').textContent='Gravando 5 segundos...';
+const start=performance.now();await new Promise(ok=>{function tick(t){draw();if(t-start<5000)requestAnimationFrame(tick);else ok()}requestAnimationFrame(tick)});
+audio.pause();recorder.stop();await done;const blob=new Blob(chunks,{type:mime});if(blob.size<1000)throw Error('Arquivo vazio.');
+const output=URL.createObjectURL(blob);el('preview').src=output;const a=document.createElement('a');a.href=output;a.download='adl-midia-teste-audio.'+(mime.startsWith('video/mp4')?'mp4':'webm');a.click();el('status').textContent='Teste exportado. Confira som e imagem no arquivo.';
+}catch(err){el('status').textContent='Erro: '+err.message;if(recorder?.state==='recording')recorder.stop()}finally{if(stream)stream.getTracks().forEach(t=>t.stop());if(context)await context.close();if(url)URL.revokeObjectURL(url);button.disabled=false}};
+</script></body></html>
