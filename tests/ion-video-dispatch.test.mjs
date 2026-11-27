@@ -7,6 +7,27 @@ import { executarMotor } from "../worker-ion/motores-ia.mjs";
 
 const url = "https://ion.example.test/api/video/transito";
 
+test("entrega a voz Faber pela mesma origem e permite apenas os recursos previstos", async t => {
+  const downloads = [];
+  t.mock.method(globalThis, "fetch", async url => {
+    downloads.push(String(url));
+    if (String(url).includes("+esm")) {
+      return new Response('const base = "https://huggingface.co/diffusionstudio/piper-voices/resolve/main"; import("/npm/onnxruntime-web@1.27.0/wasm/+esm");');
+    }
+    return new Response("modelo");
+  });
+  const abrir = (recurso, method) => worker.fetch(new Request("https://ion.example.test/aion-voz/" + recurso, { method }), {});
+  assert.equal((await abrir("modelos/outro.onnx")).status, 404);
+  assert.equal((await abrir("piper.mjs", "POST")).status, 405);
+  assert.deepEqual(downloads, []);
+  const modulo = await abrir("piper.mjs");
+  assert.match(await modulo.text(), /"\/aion-voz\/modelos"; import\("https:\/\/cdn\.jsdelivr\.net\/npm\//);
+  const modelo = await abrir("modelos/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx");
+  assert.equal(modelo.headers.get("Content-Type"), "application/octet-stream");
+  assert.equal(await modelo.text(), "modelo");
+  assert.equal(downloads.length, 2);
+});
+
 test("motores tentam alternativa em caso de falha e param no limite da conta", async () => {
   const chamadas = [];
   const ia = { run: async modelo => {
