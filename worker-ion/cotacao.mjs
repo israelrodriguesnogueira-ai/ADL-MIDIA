@@ -23,18 +23,21 @@ async function obterJsonCotacao(url, fonte, fetchImpl) {
   try {
     const resposta = await fetchImpl(String(url), {
       headers: { Accept: "application/json" },
-      redirect: "error",
+      redirect: "manual",
       signal: AbortSignal.timeout(5000),
     });
     if (resposta.ok) return await resposta.json();
     console.warn(JSON.stringify({ event: "aion.cotacao_fonte_http", fonte, status: resposta.status }));
   } catch (erro) {
-    console.warn(JSON.stringify({ event: "aion.cotacao_fonte_falhou", fonte, tipo: erro?.name }));
+    console.warn(JSON.stringify({
+      event: "aion.cotacao_fonte_falhou", fonte, tipo: erro?.name,
+      detalhe: String(erro?.message ?? "").slice(0, 160),
+    }));
   }
   return null;
 }
 
-export async function consultarCotacaoDolar(fetchImpl = fetch, agora = new Date()) {
+export async function consultarCotacaoDolar(fetchImpl = (url, opcoes) => fetch(url, opcoes), agora = new Date()) {
   const consulta = () => "Consulta feita em " + horaConsulta.format(new Date()) + " (Brasília).";
   const diasAtras = new Date(agora.getTime() - 7 * 86400000);
   const url = new URL(URL_PTAX);
