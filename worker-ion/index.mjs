@@ -4,6 +4,7 @@ import { arquivosDoDono, consultarTarefa, guardarJingle, receberVideo3D, referen
 import { paginaExecutor } from "./executor-javascript.mjs";
 import { caminhosSincronismo, scriptSincronismo } from "./catalogo-sincronismo.mjs";
 import { consultarCotacaoDolar, pedidoDeCotacaoDolar } from "./cotacao.mjs";
+import { servirVozFaber } from "./voz-faber.mjs";
 import { protectOwnerRoute } from "../integracoes/ion-controle-dono.mjs";
 
 const LIMITE_TEXTO_CONVERSA = 2000;
@@ -101,6 +102,7 @@ async function statusMudanca(request, env, id) {
 export default {
   async fetch(request, env) {
     const path = new URL(request.url).pathname;
+    if (path.startsWith("/aion-voz/")) return servirVozFaber(request, path);
     if (path === "/executor-javascript" && request.method === "GET") return paginaExecutor();
     const armazenamento = env.ION_VIDEOS_DB ? arquivosEmD1(env.ION_VIDEOS_DB) : undefined;
     const resultado3D = path.match(/^\/api\/video\/3d\/resultado\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/);
@@ -1830,7 +1832,7 @@ function loginPage(clientId) {
     }
 
     async function carregarVozFaber(progress) {
-      const { TtsSession } = await import("https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.5/+esm");
+      const { TtsSession } = await import("/aion-voz/piper.mjs");
       // O bundle ESM carrega ONNX Runtime 1.27.0. O WASM precisa usar a mesma versão.
       return TtsSession.create({
         voiceId: "pt_BR-faber-medium",
