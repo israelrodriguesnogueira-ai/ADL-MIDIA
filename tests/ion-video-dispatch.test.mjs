@@ -93,6 +93,7 @@ test("conversa do proprietário executa vídeo e jingle e devolve estados reais"
   let fonteCotacao = "ptax";
   let consultasCotacao = 0;
   const arquivos = new Map();
+  const cidadesConsultadas = [];
   t.mock.method(globalThis, "fetch", async (url, opcoes) => {
     if (url === "https://www.googleapis.com/oauth2/v3/certs") return Response.json({ keys: [chave] });
     if (new URL(url).hostname === "olinda.bcb.gov.br") {
@@ -108,6 +109,19 @@ test("conversa do proprietário executa vídeo e jingle e devolve estados reais"
       return fonteCotacao === "alternativa"
         ? Response.json({ base: "USD", date: "2026-11-24", rates: { BRL: 5.6 } })
         : new Response(null, { status: 503 });
+    }
+    if (new URL(url).hostname === "geocoding-api.open-meteo.com") {
+      const cidade = new URL(url).searchParams.get("name");
+      cidadesConsultadas.push(cidade);
+      return Response.json({ results: [
+        { name: "São Paulo", admin1: "São Paulo", country_code: "BR", latitude: -23.55, longitude: -46.63 },
+      ] });
+    }
+    if (new URL(url).hostname === "api.open-meteo.com") {
+      return Response.json({ daily: {
+        time: ["2026-11-27", "2026-11-28"], temperature_2m_min: [16, 17],
+        temperature_2m_max: [22, 23], precipitation_probability_max: [61, 35],
+      } });
     }
     assert.match(url, /\/actions\/workflows\/aion-video-3d\.yml\/dispatches$/);
     pedidos.push(JSON.parse(opcoes.body));
@@ -149,6 +163,10 @@ test("conversa do proprietário executa vídeo e jingle e devolve estados reais"
   assert.match((await indisponivel.json()).erro, /fontes da cotação/);
   assert.equal((await solicitar("Explique a cotação histórica do dólar")).status, 503);
   assert.equal(consultasCotacao, 3);
+  const previsao = await solicitar("Qual é a previsão do tempo para amanhã em São Paulo, SP? Informe a fonte.");
+  assert.equal(previsao.status, 200);
+  assert.match((await previsao.json()).texto, /São Paulo \(28\/11\/2026\)[\s\S]*Open-Meteo/);
+  assert.deepEqual(cidadesConsultadas, ["São Paulo"]);
 
   const comando = "Aion, eu quero que você faça um vídeo 3D vestido preto duração de 15 segundos. O resultado esperado é um vídeo 3D vestido preto vertical com giro contínuo mostrando frente, lateral e costas.";
   assert.equal((await solicitar(comando, "outra@gmail.com")).status, 403);
