@@ -759,7 +759,8 @@ async function consultarPrevisao(mensagens) {
   const continuacao = anteriores.at(-1)?.role === "assistant" && anteriores.at(-1)?.content === perguntaCidade;
   const clima = /previs[aã]o (?:do tempo|para hoje|para amanh[ãa])|vai chover|como est[aá] o tempo/i;
   if (!continuacao && !clima.test(pedido)) return null;
-  const limpar = texto => texto.replace(/\b(?:para\s+)?(?:hoje|amanh[ãa])\b/gi, "").replace(/[?.!]\s*$/, "").trim();
+  const limpar = texto => texto.split(/[?.!;\n]/, 1)[0]
+    .replace(/\b(?:para\s+)?(?:hoje|amanh[ãa])\b/gi, "").trim();
   const localDeclarado = texto => texto.match(/\b(?:estou|moro|fico)\s+em\s+(.+)$/i)?.[1];
   const anterior = [...anteriores].reverse().find(m => m.role === "user" && clima.test(m.content))?.content || "";
   const cidadeInformada = [...anteriores].reverse()
@@ -1828,6 +1829,19 @@ function loginPage(clientId) {
       document.body.append(quadro);
     }
 
+    async function carregarVozFaber(progress) {
+      const { TtsSession } = await import("https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.5/+esm");
+      // O bundle ESM carrega ONNX Runtime 1.27.0. O WASM precisa usar a mesma versão.
+      return TtsSession.create({
+        voiceId: "pt_BR-faber-medium",
+        progress,
+        wasmPaths: {
+          ...TtsSession.WASM_LOCATIONS,
+          onnxWasm: "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/",
+        },
+      });
+    }
+
     function iconeResposta(botao, nome) {
       const desenhos = {
         ouvir: '<path d="M3 9h4l5-4v14l-5-4H3zM16 9a4 4 0 0 1 0 6m3-9a8 8 0 0 1 0 12"/>',
@@ -1881,13 +1895,13 @@ function loginPage(clientId) {
             try {
               const preparar = async () => {
                 if (ultimoAudioFaber?.texto === texto) return ultimoAudioFaber.blob;
-                const piper = await import("https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.5/+esm");
-                if (leitura !== sessao) return null;
-                return piper.predict({ text: texto, voiceId: "pt_BR-faber-medium" }, progresso => {
+                const voz = await carregarVozFaber(progresso => {
                   if (leitura === sessao && progresso.total > 0) {
                     statusLeitura.textContent = "Baixando voz Faber… " + Math.min(100, Math.round(progresso.loaded * 100 / progresso.total)) + "%";
                   }
                 });
+                if (leitura !== sessao) return null;
+                return voz.predict(texto);
               };
               const audioWav = await Promise.race([preparar(), new Promise((_, reject) => {
                 prazo = setTimeout(() => reject(new Error("Tempo de preparação excedido")), 45000);
@@ -2255,8 +2269,7 @@ function loginPage(clientId) {
           const AudioContext = window.AudioContext || window.webkitAudioContext;
           contexto = new AudioContext();
           await aguardarAudio(contexto.resume(), signal, 6000);
-          const piper = await aguardarAudio(
-            import("https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.5/+esm"), signal);
+          const voz = await aguardarAudio(carregarVozFaber(), signal);
           falas = [];
           for (const [indice, cena] of roteiro.cenas.entries()) {
             signal.throwIfAborted();
@@ -2265,7 +2278,7 @@ function loginPage(clientId) {
               falas.push(null);
               continue;
             }
-            const wav = await aguardarAudio(piper.predict({ text: cena.fala, voiceId: "pt_BR-faber-medium" }), signal);
+            const wav = await aguardarAudio(voz.predict(cena.fala), signal);
             const audio = await contexto.decodeAudioData(await wav.arrayBuffer());
             if (audio.duration > cena.segundos * 1.25) {
               throw new Error("A fala da cena " + (indice + 1) + " precisa ser mais curta ou a cena precisa durar mais.");

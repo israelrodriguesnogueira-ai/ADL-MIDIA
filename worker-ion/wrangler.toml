@@ -18,3 +18,9 @@ binding = "ION_AI"
 
 [vars]
 ION_VISION_FREE_ENABLED = "true"
+
+[[d1_databases]]
+binding = "ION_VIDEOS_DB"
+database_name = "ion-videos-db"
+database_id = "2a7a445a-7dff-467b-ac4c-7199554d9a30"
+migrations_dir = "migrations"
