@@ -90,9 +90,25 @@ test("conversa do proprietário executa vídeo e jingle e devolve estados reais"
     return "Bearer " + payload + "." + sign("sha256", Buffer.from(payload), privateKey).toString("base64url");
   };
   const pedidos = [];
+  let fonteCotacao = "ptax";
+  let consultasCotacao = 0;
   const arquivos = new Map();
   t.mock.method(globalThis, "fetch", async (url, opcoes) => {
     if (url === "https://www.googleapis.com/oauth2/v3/certs") return Response.json({ keys: [chave] });
+    if (new URL(url).hostname === "olinda.bcb.gov.br") {
+      consultasCotacao++;
+      return fonteCotacao === "ptax"
+        ? Response.json({ value: [
+          { cotacaoVenda: 5.1, dataHoraCotacao: "2026-11-24 13:00:00.000" },
+          { cotacaoVenda: 5.7, dataHoraCotacao: "2026-11-25 13:00:00.000" },
+        ] })
+        : new Response(null, { status: 503 });
+    }
+    if (new URL(url).hostname === "api.frankfurter.dev") {
+      return fonteCotacao === "alternativa"
+        ? Response.json({ base: "USD", date: "2026-11-24", rates: { BRL: 5.6 } })
+        : new Response(null, { status: 503 });
+    }
     assert.match(url, /\/actions\/workflows\/aion-video-3d\.yml\/dispatches$/);
     pedidos.push(JSON.parse(opcoes.body));
     return Response.json({ workflow_run_id: 123 });
@@ -117,6 +133,22 @@ test("conversa do proprietário executa vídeo e jingle e devolve estados reais"
     headers: { Authorization: credencial(email) },
     body: JSON.stringify({ mensagens: [{ role: "user", content: texto }] }),
   }), ambiente);
+
+  const consulta = "Qual é a cotação do dólar hoje em reais (USD/BRL)? Informe a fonte e a data e hora.";
+  assert.equal((await solicitar(consulta, "outra@gmail.com")).status, 403);
+  assert.equal(consultasCotacao, 0);
+  const ptax = await solicitar(consulta);
+  assert.equal(ptax.status, 200);
+  assert.equal(ptax.headers.get("Cache-Control"), "no-store");
+  assert.match((await ptax.json()).texto, /5,7000[\s\S]*25\/11\/2026 às 13:00:00[\s\S]*Banco Central do Brasil/);
+  fonteCotacao = "alternativa";
+  assert.match((await (await solicitar(consulta)).json()).texto, /5,6000[\s\S]*24\/11\/2026[\s\S]*Frankfurter/);
+  fonteCotacao = "indisponivel";
+  const indisponivel = await solicitar(consulta);
+  assert.equal(indisponivel.status, 502);
+  assert.match((await indisponivel.json()).erro, /fontes da cotação/);
+  assert.equal((await solicitar("Explique a cotação histórica do dólar")).status, 503);
+  assert.equal(consultasCotacao, 3);
 
   const comando = "Aion, eu quero que você faça um vídeo 3D vestido preto duração de 15 segundos. O resultado esperado é um vídeo 3D vestido preto vertical com giro contínuo mostrando frente, lateral e costas.";
   assert.equal((await solicitar(comando, "outra@gmail.com")).status, 403);
