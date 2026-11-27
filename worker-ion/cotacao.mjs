@@ -19,14 +19,19 @@ export function pedidoDeCotacaoDolar(pedido) {
     && /\b(?:cotacao|cambio|taxa|valor|quanto (?:vale|esta|custa)|ptax)\b|\busd\s*\/\s*brl\b/.test(texto);
 }
 
-async function obterJsonCotacao(url, fetchImpl) {
-  const resposta = await fetchImpl(url, {
-    headers: { Accept: "application/json" },
-    redirect: "error",
-    signal: AbortSignal.timeout(5000),
-  });
-  if (!resposta.ok) throw new Error("Fonte indisponível");
-  return resposta.json();
+async function obterJsonCotacao(url, fonte, fetchImpl) {
+  try {
+    const resposta = await fetchImpl(String(url), {
+      headers: { Accept: "application/json" },
+      redirect: "error",
+      signal: AbortSignal.timeout(5000),
+    });
+    if (resposta.ok) return await resposta.json();
+    console.warn(JSON.stringify({ event: "aion.cotacao_fonte_http", fonte, status: resposta.status }));
+  } catch (erro) {
+    console.warn(JSON.stringify({ event: "aion.cotacao_fonte_falhou", fonte, tipo: erro?.name }));
+  }
+  return null;
 }
 
 export async function consultarCotacaoDolar(fetchImpl = fetch, agora = new Date()) {
@@ -39,8 +44,8 @@ export async function consultarCotacaoDolar(fetchImpl = fetch, agora = new Date(
     "$format": "json",
   }).toString();
   try {
-    const dados = await obterJsonCotacao(url, fetchImpl);
-    const ultimo = dados.value.filter(item =>
+    const dados = await obterJsonCotacao(url, "ptax", fetchImpl);
+    const ultimo = (Array.isArray(dados?.value) ? dados.value : []).filter(item =>
       /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(item?.dataHoraCotacao)
       && Number.isFinite(item.cotacaoVenda) && item.cotacaoVenda > 0
     ).sort((a, b) => b.dataHoraCotacao.localeCompare(a.dataHoraCotacao))[0];
@@ -56,7 +61,7 @@ export async function consultarCotacaoDolar(fetchImpl = fetch, agora = new Date(
     // O provedor de referência diário mantém a consulta disponível quando a PTAX falha.
   }
   try {
-    const dados = await obterJsonCotacao(URL_FRANKFURTER, fetchImpl);
+    const dados = await obterJsonCotacao(URL_FRANKFURTER, "frankfurter", fetchImpl);
     const taxa = dados?.rates?.BRL;
     if (dados?.base === "USD" && Number.isFinite(taxa) && taxa > 0 && /^\d{4}-\d{2}-\d{2}$/.test(dados.date)) {
       return "USD/BRL · Última taxa de referência diária: " + formatarTaxa.format(taxa)
