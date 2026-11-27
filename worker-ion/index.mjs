@@ -3,6 +3,7 @@ import { arquivosEmD1 } from "./arquivos-d1.mjs";
 import { arquivosDoDono, consultarTarefa, guardarJingle, receberVideo3D, referenciaDaTarefa, reservarVideo3D } from "./arquivos.mjs";
 import { paginaExecutor } from "./executor-javascript.mjs";
 import { caminhosSincronismo, scriptSincronismo } from "./catalogo-sincronismo.mjs";
+import { consultarCotacaoDolar, pedidoDeCotacaoDolar } from "./cotacao.mjs";
 import { protectOwnerRoute } from "../integracoes/ion-controle-dono.mjs";
 
 const LIMITE_TEXTO_CONVERSA = 2000;
@@ -130,6 +131,17 @@ export default {
           return Response.json({ erro: "Armazenamento privado temporariamente indisponível." }, { status: 502 });
         }
       })(request);
+    }
+    if (path === "/api/comando" || path === "/api/executar") {
+      if (request.method !== "POST") return new Response(null, { status: 405, headers: { Allow: "POST" } });
+      const rawCommand = await request.text();
+      if (rawCommand.length > 8000) return Response.json({ erro: "Comando muito longo." }, { status: 413 });
+      let payload;
+      try { payload = JSON.parse(rawCommand); } catch { return Response.json({ erro: "JSON invalido." }, { status: 400 }); }
+      const comando = payload?.comando;
+      if (typeof comando !== "string" || !comando.trim() || comando.length > 2000) return Response.json({ erro: "Comando invalido." }, { status: 400 });
+      const proxied = new Request(request.url, { method: "POST", headers: request.headers, body: JSON.stringify({ mensagens: [{ role: "user", content: comando.trim() }] }) });
+      return responderConversa(proxied, env, armazenamento);
     }
     if (path === "/api/conversa") return responderConversa(request, env, armazenamento);
     if (path === "/api/foto") return analisarFoto(request, env);
@@ -610,6 +622,13 @@ async function responderConversa(request, env, armazenamento) {
     const projeto = ultimoVideo ? "video" : ultimaPartitura ? "musica" : null;
     const tipo = recuperandoMusica ? "musica" : tipoDeProducao(pedido, projeto);
     if (!tipo) {
+      if (pedidoDeCotacaoDolar(pedido)) {
+        const texto = await consultarCotacaoDolar();
+        const headers = { "Cache-Control": "no-store" };
+        return texto
+          ? Response.json({ texto }, { headers })
+          : Response.json({ erro: "As fontes da cotação USD/BRL estão temporariamente indisponíveis." }, { status: 502, headers });
+      }
       const previsao = await consultarPrevisao(mensagens);
       if (previsao) return Response.json({ texto: previsao }, { headers: { "Cache-Control": "no-store" } });
     }
