@@ -1526,6 +1526,8 @@ function loginPage(clientId) {
   const LIMITE_TEXTO_CONVERSA = ${LIMITE_TEXTO_CONVERSA};
   const LIMITE_MENSAGENS_RECENTES = ${LIMITE_MENSAGENS_RECENTES};
   const LIMITE_MENSAGENS_ANTERIORES = ${LIMITE_MENSAGENS_ANTERIORES};
+  // O empacotador pode inserir este auxiliar nas funções serializadas para o navegador.
+  const __name = (alvo, nome) => Object.defineProperty(alvo, "name", { value: nome, configurable: true });
   ${montarContextoDaConversa.toString()}
   ${partituraValida.toString()}
   ${videoValido.toString()}
