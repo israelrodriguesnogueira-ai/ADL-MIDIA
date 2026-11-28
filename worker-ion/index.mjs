@@ -2724,7 +2724,7 @@ function loginPage(clientId) {
       const revisaoDoVideo = revisaoComAprovacao && videoValido(respostaAnteriorDoProjeto?.roteiroVideo)
         && tipoDeProducao(revisaoComAprovacao[1], "video") === "video" ? revisaoComAprovacao[1] : null;
       const aprovou = aprovacaoProducao(request);
-      const pedidoAnterior = current[current.length - 4]?.text || "";
+      const pedidoOriginalDaProposta = current[current.length - 4]?.text || "";
       const mensagemAnterior = current[current.length - 4];
       const recuperarJingle = !file && aprovou && !ultimaProposta
         && mensagemAnterior?.who === "Você" && tipoDeProducao(mensagemAnterior.text) === "musica";
@@ -2739,12 +2739,12 @@ function loginPage(clientId) {
         }
         const roteiro = ultimaProposta.roteiroVideo;
         if (videoValido(roteiro)) {
-          if (ultimaProposta.visual !== "vestido-3d" && pedidoDeVideo3D(pedidoAnterior)) {
-            proporVestido3D(pedidoAnterior);
+          if (ultimaProposta.visual !== "vestido-3d" && pedidoDeVideo3D(pedidoOriginalDaProposta)) {
+            proporVestido3D(pedidoOriginalDaProposta);
             return;
           }
           await gerarClipeDoRoteiro(item, body, record, roteiro, update,
-            ultimaProposta.visual || (parseCommand(pedidoAnterior).trafficRequest ? "transito" : undefined));
+            ultimaProposta.visual || (parseCommand(pedidoOriginalDaProposta).trafficRequest ? "transito" : undefined));
           return;
         }
       }
