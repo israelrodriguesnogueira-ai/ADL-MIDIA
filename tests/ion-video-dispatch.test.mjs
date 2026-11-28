@@ -425,3 +425,28 @@ test("pesquisa em português consulta uma fonte real e devolve os links sem cham
   dispo = false;
   assert.match((await pesquisarWikipedia("C4 Pallas")).erro, /não respondeu/);
 });
+
+
+test("o renderizador funciona quando o empacotador preserva o nome das funções", async () => {
+  const resposta = await worker.fetch(new Request("https://ion.example.test/"), {
+    ION_OWNER_EMAIL: "owner@gmail.com",
+    ION_GOOGLE_CLIENT_ID: "worker-test.apps.googleusercontent.com",
+  });
+  const script = (await resposta.text()).match(/<script>\s*([\s\S]*?)<\/script>/)[1];
+  const auxiliar = script.split("\n").find(linha => linha.includes("const __name = "));
+  assert.ok(auxiliar);
+  const inicio = script.indexOf("function desenharPallas3D");
+  assert.ok(inicio > 0);
+  const fim = script.indexOf("function desenharVestido3D", inicio);
+  assert.ok(fim > inicio);
+  const desenho = script.slice(inicio, fim).replace("  const perfil =", "  __name(face, \"face\");\n  const perfil =");
+  const renderizar = new Script(auxiliar + "\n" + desenho + "\ndesenharPallas3D;").runInNewContext();
+  let faces = 0;
+  const ctx = {
+    createLinearGradient: () => ({ addColorStop() {} }),
+    fillRect() {}, beginPath() {}, ellipse() {}, moveTo() {}, lineTo() {}, closePath() {}, stroke() {},
+    fill() { faces++; },
+  };
+  renderizar(ctx, 0.25);
+  assert.ok(faces > 10);
+});
