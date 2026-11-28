@@ -22,10 +22,14 @@ function montarContextoDaConversa(conversa) {
   const retomada = anteriores.slice(inicio.length).slice(-LIMITE_MENSAGENS_ANTERIORES / 2);
   const selecionadas = inicio.concat(retomada, recentes);
   const limiteDasAnteriores = inicio.length + retomada.length;
-  return selecionadas.map((entrada, indice) => ({
-    role: entrada.who === "Você" ? "user" : "assistant",
-    content: entrada.text.trim().slice(0, indice < limiteDasAnteriores ? 500 : LIMITE_TEXTO_CONVERSA),
-  }));
+  return selecionadas.map((entrada, indice) => {
+    const original = entrada.retoma && conversa.find(item => item.idRetomada === entrada.retoma && item.who === "Ion");
+    const texto = original?.text || entrada.text;
+    return {
+      role: entrada.who === "Você" ? "user" : "assistant",
+      content: texto.trim().slice(0, indice < limiteDasAnteriores ? 500 : LIMITE_TEXTO_CONVERSA),
+    };
+  });
 }
 const LIMITE_PERGUNTA_FOTO_CODIFICADA = 6000;
 
@@ -455,6 +459,34 @@ function desenharTransito(ctx, progresso, cena) {
 }
 
 
+function pedidoVisual3DEmContexto(pedido, anterior) {
+  const texto = normalizarPedido(pedido).replace(/[.,!?]/g, " ").trim().replace(/\s+/g, " ");
+  if (pedidoDeVideo3D(pedido) || pedidoDeVestido3D(pedido)) return pedido;
+  const orientou = pedidoDeVideo3D(anterior) || pedidoDeVestido3D(anterior);
+  const modelo = /^(?:(?:ok|entao|quero|pode (?:fazer|gerar|produzir)) )*(?:(?:o|a|um) )?(?:(?:citroen )?c4\s*pallas(?: 20\d{2})?|vestido preto|o carro|carro|vestido)(?: (?:por favor|mesmo))?$/.test(texto);
+  if (orientou && modelo) {
+    if (/\bc4\s*pallas\b|\bvestido preto\b/.test(texto)) return "Crie um vídeo 3D de " + pedido;
+    return /\bcarro\b/.test(texto) ? "Crie um vídeo 3D do C4 Pallas 2010" : "Crie um vídeo 3D do vestido preto";
+  }
+  const prosseguir = /^(?:(?:ok|sim|entao) )*(?:produz[a]?|faca|gere) o que (?:voce )?(?:sabe|consegue)(?: (?:fazer|produzir|renderizar))?$/.test(texto);
+  return orientou && prosseguir ? anterior : pedido;
+}
+
+function modoDeRetomada(pedido) {
+  const texto = normalizarPedido(pedido);
+  const voltar = /\b(?:volte|volta|voltar|retome|retoma|retomar|reabra|reabre|recupere|recupera|mostre|mostra|releia|relembre|relembra)\b/.test(texto);
+  if ((voltar || /\b(?:estava|esta) na mensagem\b/.test(texto)) && /\b(?:proposta|roteiro)\b/.test(texto)) return "proposta";
+  if (voltar && (/\b(?:mensagem|resposta)\b/.test(texto) || /\b(?:o que voce (?:disse|enviou|respondeu))\b/.test(texto))) return "resposta";
+  return null;
+}
+
+function tituloDaDuracao(ms, emAndamento) {
+  const segundos = Math.floor(ms / 1000);
+  const minutos = Math.floor(segundos / 60);
+  const tempo = minutos ? minutos + " min " + (segundos % 60) + " s" : segundos + " s";
+  return (emAndamento ? "Trabalhando · " : "Tempo de execução · ") + tempo;
+}
+
 function propostaVisual(pedido) {
   const texto = normalizarPedido(pedido);
   const video = /\b(?:video|short|animacao|roteiro)\b/.test(texto);
@@ -883,9 +915,10 @@ async function responderConversa(request, env, armazenamento) {
         texto: "O renderizador disponível produz um vídeo vertical de 15 segundos, com giro do vestido preto. Peça essa versão para iniciar a renderização.",
       }, { headers: { "Cache-Control": "no-store" } });
     }
-    if (pedidoDeVideo3D(pedido)) {
+    if (pedidoDeVideo3D(pedido)
+        || (/\b3d\b/.test(pedidoNormalizadoParaMidia) && /\b(?:renderizar|renderiza|renderizacao|modelos|objetos)\b/.test(pedidoNormalizadoParaMidia))) {
       return Response.json({
-        texto: "O renderizador 3D do Aion tem um modelo de vestido preto com giro de 15 segundos. Para esse modelo, peça um vídeo 3D do vestido preto. Outros objetos e cenas 3D precisam de um renderizador compatível.",
+        texto: "O Aion oferece dois modelos 3D em giro de 15 segundos: vestido preto e Citroën C4 Pallas 2010 estilizado. Escolha um modelo na conversa para gerar o vídeo.",
       }, { headers: { "Cache-Control": "no-store" } });
     }
     const anterior = mensagens.at(-3)?.role === "user" ? mensagens.at(-3).content : "";
@@ -1453,6 +1486,9 @@ function loginPage(clientId) {
   ${pedidoDeVestido3D.toString()}
   ${pedidoDeVideo3D.toString()}
   ${duracaoSolicitada.toString()}
+  ${pedidoVisual3DEmContexto.toString()}
+  ${modoDeRetomada.toString()}
+  ${tituloDaDuracao.toString()}
   ${propostaVisual.toString()}
   ${desenharPallas3D.toString()}
   ${desenharVestido3D.toString()}
@@ -1574,6 +1610,7 @@ function loginPage(clientId) {
       help.textContent = "Interrupção solicitada.";
     };
     const videoUrls = [];
+    const itensPorMensagem = new WeakMap();
     function saveHistory() {
       const mudouOrdem = current.length && saved[0] !== current;
       if (mudouOrdem) saved = [current, ...saved.filter(chat => chat !== current)].slice(0, 20);
@@ -1605,6 +1642,7 @@ function loginPage(clientId) {
       videoUrls.splice(0).forEach(url => URL.revokeObjectURL(url));
       for (const entry of chat) {
         const { item } = message(entry.who, entry.text, entry);
+        apresentarRetomada(item, entry);
         if (partituraValida(entry.partitura) && entry.versaoAudio) {
           try {
             apresentarPartitura(item, entry);
@@ -2141,6 +2179,12 @@ function loginPage(clientId) {
       const body = document.createElement("p");
       body.textContent = content;
       item.append(label, body);
+      if (entrada) itensPorMensagem.set(entrada, item);
+      if (entrada?.duracaoExecucaoMs >= 1000) {
+        const tempo = document.createElement("small");
+        tempo.textContent = tituloDaDuracao(entrada.duracaoExecucaoMs, false);
+        item.append(tempo);
+      }
       let ouvir;
       if (who === "Ion") {
         ouvir = document.createElement("button");
@@ -2506,6 +2550,25 @@ function loginPage(clientId) {
       item.append(audio, baixar);
     }
 
+    function alvoDaRetomada(entrada) {
+      return entrada?.retoma ? current.find(mensagem => mensagem.idRetomada === entrada.retoma) : null;
+    }
+
+    function apresentarRetomada(item, entrada) {
+      if (!entrada.retoma) return;
+      const abrir = document.createElement("button");
+      abrir.type = "button";
+      abrir.textContent = "Ir à mensagem original";
+      abrir.onclick = () => {
+        const original = itensPorMensagem.get(alvoDaRetomada(entrada) || entrada);
+        if (!original?.isConnected || original === item) return;
+        original.tabIndex = -1;
+        original.focus({ preventScroll: true });
+        original.scrollIntoView({ block: "center" });
+      };
+      item.append(abrir);
+    }
+
     function apresentarAprovacao(item, entrada) {
       const executar = document.createElement("button");
       executar.type = "button";
@@ -2514,7 +2577,7 @@ function loginPage(clientId) {
       executar.onclick = () => {
         if (send.disabled) return;
         if (current[current.length - 1] !== entrada) {
-          help.textContent = "Peça ao Ariel para reapresentar esta proposta antes de executar.";
+          help.textContent = "Peça ao Aion para retomar esta proposta antes de executar.";
           return;
         }
         if (input.value.trim() || attachment || textFile || audioFile) {
@@ -2797,7 +2860,32 @@ function loginPage(clientId) {
       const record = {who: "Ion", text: ""};
       const { item, body, ouvir, acoes, executarCodigo } = message("Ion", "Entendendo seu pedido…", record);
       current.push(record);
+      const inicioExecucao = performance.now();
+      const andamento = document.createElement("div");
+      const tempo = document.createElement("small");
+      const barra = document.createElement("progress");
+      barra.setAttribute("aria-label", "Pedido em andamento");
+      andamento.hidden = true;
+      andamento.append(barra, " ", tempo);
+      item.append(andamento);
+      const acompanhar = () => {
+        const decorrido = performance.now() - inicioExecucao;
+        andamento.hidden = decorrido < 700;
+        tempo.textContent = tituloDaDuracao(decorrido, true);
+      };
+      let relogio = setInterval(acompanhar, 700);
       const update = (reply) => {
+        if (relogio != null) {
+          clearInterval(relogio);
+          relogio = null;
+          const decorrido = Math.round(performance.now() - inicioExecucao);
+          barra.remove();
+          andamento.hidden = decorrido < 1000;
+          if (decorrido >= 1000) {
+            record.duracaoExecucaoMs = decorrido;
+            tempo.textContent = tituloDaDuracao(decorrido, false);
+          }
+        }
         if (typeof reply !== "string" || !reply.trim()) reply = "O Aion recebeu uma resposta vazia. Use Repetir pedido para tentar novamente.";
         const pertoDoFim = log.scrollHeight - log.scrollTop - log.clientHeight <= 48;
         body.textContent = reply;
@@ -2876,13 +2964,40 @@ function loginPage(clientId) {
       }
       const versaoAnterior = findLastMessage(entrada => Number.isInteger(entrada.versaoAudio))?.versaoAudio || 0;
       const respostaAnteriorDoProjeto = current[current.length - 3];
-      const ultimaProposta = respostaAnteriorDoProjeto?.proposta || respostaAnteriorDoProjeto?.tentarProposta
-        ? respostaAnteriorDoProjeto : null;
+      const modoRetomada = !file && modoDeRetomada(request);
+      if (modoRetomada) {
+        const alvo = findLastMessage(entrada => entrada.who === "Ion" && entrada.text.trim() && !entrada.retoma
+          && (modoRetomada === "resposta" || ((entrada.proposta || entrada.tentarProposta)
+            && (videoValido(entrada.roteiroVideo) || partituraValida(entrada.partitura)))));
+        if (!alvo) {
+          update("Ainda não encontrei uma " + (modoRetomada === "proposta" ? "proposta" : "resposta") + " nesta conversa.");
+          return;
+        }
+        alvo.idRetomada ??= crypto.randomUUID();
+        record.retoma = alvo.idRetomada;
+        const podeExecutar = (alvo.proposta || alvo.tentarProposta)
+          && (videoValido(alvo.roteiroVideo) || partituraValida(alvo.partitura));
+        if (podeExecutar) {
+          record.proposta = true;
+          record.roteiroVideo = alvo.roteiroVideo;
+          record.partitura = alvo.partitura;
+          apresentarAprovacao(item, record);
+        }
+        apresentarRetomada(item, record);
+        update(podeExecutar
+          ? "Retomei a proposta anterior. Abra a mensagem original ou diga “pode executar” para continuar."
+          : "Voltei à resposta anterior. Abra a mensagem original para lê-la no ponto em que a enviei.");
+        return;
+      }
+      const respostaRetomada = alvoDaRetomada(respostaAnteriorDoProjeto) || respostaAnteriorDoProjeto;
+      const ultimaProposta = respostaRetomada?.proposta || respostaRetomada?.tentarProposta
+        ? respostaRetomada : null;
       const revisaoComAprovacao = !file && request.match(/^(.*?)\s*[,.;!?]?\s+e\s+(?:agora\s+)?(pode\s+(?:executar|fazer|gerar|produzir))[.!?]*$/i);
       const revisaoDoVideo = revisaoComAprovacao && videoValido(respostaAnteriorDoProjeto?.roteiroVideo)
         && tipoDeProducao(revisaoComAprovacao[1], "video") === "video" ? revisaoComAprovacao[1] : null;
       const aprovou = aprovacaoProducao(request);
-      const pedidoOriginalDaProposta = current[current.length - 4]?.text || "";
+      const indiceOriginal = ultimaProposta ? current.indexOf(ultimaProposta) - 1 : current.length - 4;
+      const pedidoOriginalDaProposta = current[indiceOriginal]?.who === "Você" ? current[indiceOriginal].text : "";
       const mensagemAnterior = current[current.length - 4];
       const recuperarJingle = !file && aprovou && !ultimaProposta
         && mensagemAnterior?.who === "Você" && tipoDeProducao(mensagemAnterior.text) === "musica";
@@ -3174,7 +3289,8 @@ function loginPage(clientId) {
           : respostaAnteriorDoProjeto.visual === "c4-pallas-3d" ? "Crie um vídeo 3D do C4 Pallas 2010 com narração"
           : "Crie um vídeo 3D do vestido preto com narração")
         : request;
-      const planoLocal = !file && propostaVisual(pedidoParaProposta);
+      const pedidoVisual = pedidoVisual3DEmContexto(pedidoParaProposta, mensagemAnterior?.text || "");
+      const planoLocal = !file && propostaVisual(pedidoVisual);
       if (planoLocal) {
         record.visual = planoLocal.visual;
         record.roteiroVideo = planoLocal.roteiro;
@@ -3190,7 +3306,8 @@ function loginPage(clientId) {
           + " Toque em Executar proposta ou diga “pode executar” para gerar o vídeo.");
         return;
       }
-      if (!file && (pedidoDeVestido3D(request) || pedidoDeVideo3D(request))) {
+      if (!file && (pedidoDeVestido3D(pedidoVisual) || pedidoDeVideo3D(pedidoVisual)
+          || (/\\b3d\\b/.test(command) && /\\b(?:renderizar|renderiza|renderizacao|modelos|objetos)\\b/.test(command)))) {
         update("Posso renderizar dois modelos 3D em giro vertical de 15 segundos: vestido preto ou Citroën C4 Pallas 2010 estilizado. Qual você quer?");
         return;
       }

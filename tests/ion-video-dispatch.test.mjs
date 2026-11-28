@@ -349,3 +349,29 @@ test("link do YouTube usa o ID canônico e metadados sem inventar análise", asy
   assert.match(dados, /Título confirmado/);
   assert.match(dados, /envie capturas do vídeo/);
 });
+
+
+test("retomada reconhece a mensagem anterior e mantém a escolha do modelo 3D", async () => {
+  const resposta = await worker.fetch(new Request("https://ion.example.test/"), {
+    ION_OWNER_EMAIL: "owner@gmail.com",
+    ION_GOOGLE_CLIENT_ID: "worker-test.apps.googleusercontent.com",
+  });
+  const script = (await resposta.text()).match(/<script>\s*([\s\S]*?)<\/script>/)[1];
+  const funcoes = script.slice(script.indexOf("const LIMITE_TEXTO_CONVERSA"), script.indexOf("function tipoDeProducao"));
+  const { modoDeRetomada, pedidoVisual3DEmContexto, propostaVisual, tituloDaDuracao, montarContextoDaConversa } = new Script(
+    funcoes + "\n({ modoDeRetomada, pedidoVisual3DEmContexto, propostaVisual, tituloDaDuracao, montarContextoDaConversa });"
+  ).runInNewContext();
+  assert.equal(modoDeRetomada("Volta na própria mensagem que você enviou"), "resposta");
+  assert.equal(modoDeRetomada("A proposta estava na mensagem logo anterior que você deu"), "proposta");
+  assert.equal(modoDeRetomada("Crie uma proposta de roteiro"), null);
+  const anterior = "Faça um vídeo em 3D";
+  assert.equal(propostaVisual(pedidoVisual3DEmContexto("O carro", anterior)).visual, "c4-pallas-3d");
+  assert.equal(propostaVisual(pedidoVisual3DEmContexto("C4 Pallas 2011", anterior)), null);
+  assert.equal(propostaVisual(pedidoVisual3DEmContexto("O carro", "Bom dia")), null);
+  const historico = [{ who: "Ion", idRetomada: "original", text: "Proposta do C4 Pallas" },
+    ...Array.from({ length: 20 }, (_, i) => ({ who: "Você", text: "Mensagem " + i })),
+    { who: "Ion", retoma: "original", text: "Retomei a proposta" }];
+  assert.equal(montarContextoDaConversa(historico).at(-1).content, "Proposta do C4 Pallas");
+  assert.equal(tituloDaDuracao(61000, true), "Trabalhando · 1 min 1 s");
+  assert.equal(tituloDaDuracao(61000, false), "Tempo de execução · 1 min 1 s");
+});
