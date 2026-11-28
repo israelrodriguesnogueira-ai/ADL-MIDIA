@@ -450,3 +450,21 @@ test("o renderizador funciona quando o empacotador preserva o nome das funções
   renderizar(ctx, 0.25);
   assert.ok(faces > 10);
 });
+
+
+test("comparativo do vestido usa a mesma escala nas vistas de frente, perfil e costas", async () => {
+  const resposta = await worker.fetch(new Request("https://ion.example.test/"), {
+    ION_OWNER_EMAIL: "owner@gmail.com",
+    ION_GOOGLE_CLIENT_ID: "worker-test.apps.googleusercontent.com",
+  });
+  const script = (await resposta.text()).match(/<script>\s*([\s\S]*?)<\/script>/)[1];
+  const inicio = script.indexOf("function montarComparativoVestido");
+  const fim = script.indexOf("function desenharTransito", inicio);
+  assert.ok(inicio > 0 && fim > inicio);
+  const comparar = new Script(script.slice(inicio, fim) + "\nmontarComparativoVestido;").runInNewContext();
+  const quadros = [];
+  const legendas = [];
+  comparar({ fillRect() {}, fillText(...dados) { legendas.push(dados); } }, (...dados) => quadros.push(dados));
+  assert.deepEqual(quadros, [[0, 12, 80], [0.25, 564, 80], [0.5, 1116, 80]]);
+  assert.deepEqual(legendas.slice(1).map(([texto]) => texto), ["Frente", "Perfil", "Costas"]);
+});

@@ -357,56 +357,95 @@ function pedidoDeVideo3D(texto) {
 }
 
 function desenharVestido3D(ctx, progresso) {
-  const perfil = [[223, 60, 32], [240, 88, 39], [270, 86, 44], [320, 71, 43],
-    [375, 58, 35], [420, 68, 45], [475, 93, 59], [585, 115, 69], [715, 151, 86]];
   const angulo = progresso * Math.PI * 2;
-  const luz = [0.52, -0.18, 0.83];
-  const lados = 40;
-  function ponto(indice, setor) {
-    const [altura, largura, profundidade] = perfil[indice];
-    const theta = setor * 2 * Math.PI / lados;
-    const dobra = indice < 5 ? 1 : 1 + (indice - 4) * 0.013 * Math.cos(theta * 8);
-    const x = Math.cos(theta) * largura * dobra;
-    const z = Math.sin(theta) * profundidade * dobra;
-    const giradoX = x * Math.cos(angulo) + z * Math.sin(angulo);
-    const giradoZ = z * Math.cos(angulo) - x * Math.sin(angulo);
-    const dist = 780 / (780 - giradoZ);
-    const gola = indice === 0 ? 31 * Math.max(0, Math.sin(theta)) ** 3 : 0;
-    return [270 + giradoX * dist, 470 + (altura + gola - 470) * dist,
-      giradoX, altura + gola, giradoZ];
-  }
+  const s = Math.sin(angulo), c = Math.cos(angulo);
   const faces = [];
-  for (let anel = 0; anel < perfil.length - 1; anel++) {
-    for (let setor = 0; setor < lados; setor++) {
-      const p = [ponto(anel, setor), ponto(anel, setor + 1),
-        ponto(anel + 1, setor + 1), ponto(anel + 1, setor)];
-      const a = p[1].slice(2).map((v, i) => v - p[0][i + 2]);
-      const b = p[3].slice(2).map((v, i) => v - p[0][i + 2]);
-      const n = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-      const intensidade = Math.max(0, n.reduce((sum, componente, i) => sum + componente * luz[i], 0) / Math.hypot(...n));
-      const tom = Math.round(18 + 55 * intensidade);
-      faces.push({ p, z: p.reduce((soma, v) => soma + v[4], 0), tom });
+  const luz = [-0.45, -0.42, 0.78];
+
+  function face(pontos, cor) {
+    const p = pontos.map(([x, y, z]) => {
+      const lateral = x * c + z * s;
+      const fundo = z * c - x * s;
+      const escala = 1000 / (1000 - fundo);
+      return [270 + lateral * escala, 472 + (y - 472 + fundo * 0.045) * escala, fundo, lateral, y];
+    });
+    const a = [p[1][3] - p[0][3], p[1][4] - p[0][4], p[1][2] - p[0][2]];
+    const b = [p[2][3] - p[0][3], p[2][4] - p[0][4], p[2][2] - p[0][2]];
+    const n = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const brilho = 0.52 + 0.54 * Math.max(0, n.reduce((sum, v, i) => sum + v * luz[i], 0) / (Math.hypot(...n) || 1));
+    faces.push({ p, z: p.reduce((sum, v) => sum + v[2], 0) / p.length, cor: cor.map(v => Math.round(v * brilho)) });
+  }
+
+  function volume(aneis, cor, setores = 24, vestido = false) {
+    const malha = aneis.map(([y, x, z, rx, rz], linha) => Array.from({ length: setores }, (_, i) => {
+      const theta = i * 2 * Math.PI / setores;
+      const dobra = vestido && linha >= 4 ? 1 + (linha - 3) * 0.015 * Math.cos(theta * 8) : 1;
+      const gola = vestido && linha === 0 ? (Math.sin(theta) >= 0 ? 23 : 12) * Math.abs(Math.sin(theta)) ** 4 : 0;
+      return [x + Math.cos(theta) * rx * dobra, y + gola, z + Math.sin(theta) * rz * dobra];
+    }));
+    for (let linha = 0; linha < malha.length - 1; linha++) {
+      for (let i = 0; i < setores; i++) {
+        const j = (i + 1) % setores;
+        face([malha[linha][i], malha[linha][j], malha[linha + 1][j], malha[linha + 1][i]], cor);
+      }
     }
   }
+
+  const pele = [203, 163, 142];
+  volume([[101, 0, 0, 5, 6], [115, 0, 0, 28, 27], [145, 0, 0, 30, 29],
+    [172, 0, 1, 24, 24], [185, 0, 6, 14, 15]], pele);
+  volume([[101, 0, -2, 7, 7], [111, 0, -3, 26, 27], [133, 0, -9, 33, 32],
+    [166, 0, -15, 25, 18], [183, 0, -23, 11, 8]], [63, 46, 39]);
+  volume([[174, 0, 0, 12, 13], [205, 0, 0, 16, 15], [218, 0, 0, 37, 27],
+    [230, 0, 0, 61, 27], [252, 0, 0, 55, 27], [283, 0, 0, 45, 29]], pele);
+  for (const lado of [-1, 1]) {
+    volume([[226, lado * 59, 0, 13, 17], [253, lado * 66, 0, 12, 15],
+      [321, lado * 73, 1, 10, 11], [383, lado * 75, 5, 8, 10],
+      [410, lado * 74, 8, 7, 8], [427, lado * 72, 10, 4, 4]], pele, 18);
+    volume([[613, lado * 24, 0, 20, 22], [687, lado * 27, 0, 17, 19],
+      [759, lado * 29, 0, 15, 16], [821, lado * 30, 0, 9, 11]], pele, 18);
+    volume([[805, lado * 30, 1, 9, 11], [824, lado * 30, 8, 11, 23],
+      [833, lado * 30, 9, 11, 23]], [35, 34, 41], 18);
+  }
+
+  volume([[223, 0, 0, 53, 30], [248, 0, 2, 58, 35], [283, 0, 5, 52, 39],
+    [341, 0, 3, 42, 31], [379, 0, 1, 44, 33], [422, 0, 0, 67, 43],
+    [502, 0, 0, 78, 49], [622, 0, 0, 92, 54], [700, 0, 0, 104, 62]], [54, 54, 61], 36, true);
+  volume([[338, 0, 3, 43, 31.8], [348, 0, 3, 43, 31.8]], [37, 37, 43], 36);
+
   const fundo = ctx.createLinearGradient(0, 0, 0, 960);
-  fundo.addColorStop(0, "#dfd5c7");
-  fundo.addColorStop(1, "#827365");
+  fundo.addColorStop(0, "#f2ede5");
+  fundo.addColorStop(1, "#c0a991");
   ctx.fillStyle = fundo;
   ctx.fillRect(0, 0, 540, 960);
-  ctx.fillStyle = "#2a201b55";
+  ctx.fillStyle = "#28231c30";
   ctx.beginPath();
-  ctx.ellipse(270, 757, 153, 25, 0, 0, Math.PI * 2);
+  ctx.ellipse(270, 834, 116, 19, 0, 0, Math.PI * 2);
   ctx.fill();
-  faces.sort((a, b) => a.z - b.z);
-  for (const { p, tom } of faces) {
-    ctx.fillStyle = ctx.strokeStyle = "rgb(" + tom + "," + tom + "," + (tom + 7) + ")";
-    ctx.lineWidth = 1;
+  for (const { p, cor } of faces.sort((a, b) => a.z - b.z)) {
+    ctx.fillStyle = ctx.strokeStyle = "rgb(" + cor.join(",") + ")";
+    ctx.lineWidth = 0.8;
     ctx.beginPath();
     ctx.moveTo(p[0][0], p[0][1]);
     for (const [x, y] of p.slice(1)) ctx.lineTo(x, y);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+  }
+}
+
+function montarComparativoVestido(ctx, quadro) {
+  const angulos = [["Frente", 0], ["Perfil", 0.25], ["Costas", 0.5]];
+  ctx.fillStyle = "#f7f2ea";
+  ctx.fillRect(0, 0, 1656, 1096);
+  ctx.fillStyle = "#252221";
+  ctx.textAlign = "center";
+  ctx.font = "600 34px system-ui";
+  ctx.fillText("Vestido preto · Frente, perfil e costas", 828, 54);
+  for (const [indice, [legenda, angulo]] of angulos.entries()) {
+    const x = 12 + indice * 552;
+    quadro(angulo, x, 80);
+    ctx.fillText(legenda, x + 270, 1080);
   }
 }
 
@@ -563,67 +602,119 @@ async function identificarVideoYouTube(id) {
 }
 
 function desenharPallas3D(ctx, progresso) {
-  const angulo = (progresso - 0.105) * Math.PI * 2;
-  const seno = Math.sin(angulo);
-  const cosseno = Math.cos(angulo);
+  // Comprimento, largura, altura e entre-eixos preservam as proporções da ficha do sedã.
+  const angulo = Math.PI * 0.38 + progresso * 2 * Math.PI;
+  const s = Math.sin(angulo), c = Math.cos(angulo);
   const faces = [];
-  function face(pontos, cor) {
-    const projeto = pontos.map(([x, y, z]) => {
-      const lateral = x * cosseno + z * seno;
-      const fundo = z * cosseno - x * seno;
-      const escala = 690 / (690 - fundo);
-      return [270 + lateral * escala, 530 + (-y - fundo * 0.23) * escala, fundo];
+  const base = [-181, -159, -120, -89, -45, 22, 63, 104, 146, 178];
+  const topo = [45, 53, 61, 64, 66, 65, 63, 64, 63, 53];
+  const larg = [54, 63, 67, 68, 67, 67, 67, 67, 66, 58];
+  const eixo = [-102, 102];
+  function face(pontos, cor, vies = 0) {
+    const p = pontos.map(([x, y, z]) => {
+      const lateral = x * c + z * s;
+      const fundo = z * c - x * s;
+      const vertical = -y * 0.92 + fundo * 0.3919;
+      const profundidade = fundo * 0.92 + y * 0.3919;
+      const escala = 780 / (780 - profundidade);
+      return [270 + lateral * escala, 563 + vertical * escala, profundidade];
     });
-    faces.push({ projeto, cor, fundo: projeto.reduce((soma, p) => soma + p[2], 0) / projeto.length });
+    faces.push({ p, cor, fundo: p.reduce((soma, v) => soma + v[2], 0) / p.length + vies });
   }
-  const perfil = [[-166, 35, 63], [-155, 59, 71], [-96, 71, 74], [-42, 111, 62],
-    [47, 110, 63], [99, 73, 73], [151, 68, 71], [166, 45, 63]];
-  const baixo = perfil.map(([x, , z]) => [x, 21, z]);
-  const alto = perfil.map(([x, y, z]) => [x, y, z]);
-  for (let i = 1; i < perfil.length; i++) {
-    const [a, b] = [alto[i - 1], alto[i]];
-    face([a, b, [b[0], b[1], -b[2]], [a[0], a[1], -a[2]]],
-      i === 3 || i === 5 ? "#526a7c" : "#aab8c5");
+
+  for (let i = 1; i < base.length; i++) {
+    const frente = [base[i - 1], topo[i - 1], larg[i - 1]];
+    const tras = [base[i], topo[i], larg[i]];
+    face([frente, tras, [tras[0], tras[1], -tras[2]], [frente[0], frente[1], -frente[2]]], "#adb9c3");
   }
+
   for (const lado of [-1, 1]) {
     const p = ([x, y, z]) => [x, y, z * lado];
-    for (let i = 1; i < perfil.length; i++) {
-      face([p(alto[i - 1]), p(alto[i]), p(baixo[i]), p(baixo[i - 1])],
-        i % 2 ? "#67798a" : "#758899");
+    const perto = lado * c >= 0;
+    const secao = (x, ys) => {
+      const i = base.findIndex(v => v >= x);
+      if (i <= 0) return ys[0];
+      const t = (x - base[i - 1]) / (base[i] - base[i - 1]);
+      return ys[i - 1] + t * (ys[i] - ys[i - 1]);
+    };
+    const contorno = [...new Set([...base, ...eixo.flatMap(x => Array.from({ length: 15 }, (_, i) => x - 28 + 4 * i))])].sort((a,b)=>a-b);
+    const borda = x => 18 + Math.sqrt(Math.max(0, 27 ** 2 - Math.min(...eixo.map(e => (x - e) ** 2))));
+    const lateral = x => secao(x, larg);
+    for (let i = 1; i < contorno.length; i++) {
+      const a = contorno[i - 1], b = contorno[i];
+      const wa = lateral(a), wb = lateral(b);
+      const ya = secao(a, topo), yb = secao(b, topo);
+      face([[a, ya, wa - 2], [b, yb, wb - 2], [b, yb - 8, wb], [a, ya - 8, wa]].map(p), "#a2afbb");
+      face([[a, ya - 8, wa], [b, yb - 8, wb], [b, borda(b), wb], [a, borda(a), wa]].map(p), "#8799a8");
     }
-    face([[-89, 72, 75], [-39, 105, 64], [44, 104, 65], [88, 73, 75]].map(p), "#263c4c");
-    face([[12, 73, 76], [12, 104, 66], [17, 104, 66], [17, 73, 76]].map(p), "#7d91a3");
-    for (const eixo of [-105, 106]) {
-      const roda = (r, z) => Array.from({ length: 20 }, (_, i) => {
-        const a = i * Math.PI / 10;
-        return [eixo + Math.cos(a) * r, 24 + Math.sin(a) * r, z * lado];
-      });
-      face(roda(30, 78), "#151e24");
-      face(roda(17, 79), "#b5bfc8");
-      face(roda(6, 80), "#526270");
+
+    const teto = [[-97, 62, 62], [-52, 100, 49], [-28, 112, 47], [26, 112, 47],
+      [55, 102, 50], [105, 66, 62], [57, 65, 67], [-63, 65, 67]];
+    face(teto.map(p), "#9eacb9");
+    face([[-84, 68, 63], [-45, 98, 51], [-18, 106, 49], [-13, 69, 67]].map(p), "#253747", 0.45);
+    face([[-7, 69, 67], [-12, 106, 49], [24, 106, 49], [52, 97, 53], [89, 69, 63]].map(p), "#293d4d", 0.45);
+    for (const x of [-10, 47]) {
+      face([[x, 55, 68], [x + 14, 55, 68], [x + 14, 57, 68], [x, 57, 68]].map(p), "#d5dce1", 0.7);
+    }
+    if (perto) {
+      for (const x of eixo) {
+        const roda = (r, z) => Array.from({ length: 32 }, (_, i) => {
+          const a = i * Math.PI / 16;
+          return [x + Math.cos(a) * r, 23 + Math.sin(a) * r, z * lado];
+        });
+        face(roda(23, 66), "#21262b");
+        face(roda(15.5, 66.8), "#b4bdc5", 0.4);
+        face(roda(11, 67.2), "#626d78", 0.7);
+        for (let i = 0; i < 6; i++) {
+          const theta = i * Math.PI / 3;
+          face([[x, 23, 68], [x + Math.cos(theta - 0.15) * 14, 23 + Math.sin(theta - 0.15) * 14, 68],
+            [x + Math.cos(theta + 0.15) * 14, 23 + Math.sin(theta + 0.15) * 14, 68]].map(ponto => [ponto[0], ponto[1], ponto[2] * lado]), "#d5dbe3", 0.8);
+        }
+        face(roda(4, 68.1), "#929daa", 1);
+      }
     }
   }
-  face([[167, 22, -63], [167, 45, -63], [167, 45, 63], [167, 22, 63]], "#526273");
-  face([[-167, 22, -63], [-167, 35, -63], [-167, 35, 63], [-167, 22, 63]], "#576677");
-  for (const z of [-54, 54]) {
-    face([[168, 40, z - 9], [167, 50, z - 9], [167, 50, z + 9], [168, 40, z + 9]], "#eaf3ff");
-    face([[-168, 35, z - 9], [-167, 45, z - 9], [-167, 45, z + 9], [-168, 35, z + 9]], "#bd384a");
+  const frente = [[-97, 62, 62], [-52, 100, 49], [-28, 112, 47]];
+  const teto = [[-28, 112, 47], [26, 112, 47], [55, 102, 50]];
+  const traseira = [[55, 102, 50], [105, 66, 62]];
+  for (const [faixa, cor] of [[frente, "#3a4c5b"], [teto, "#b2bcc7"], [traseira, "#3e5362"]]) {
+    for (let i = 1; i < faixa.length; i++) {
+      const [a, b] = [faixa[i - 1], faixa[i]];
+      face([a,b,[b[0],b[1],-b[2]],[a[0],a[1],-a[2]]], cor);
+    }
+  }
+  if (s >= 0) {
+    face([[-181, 16, -54], [-181, 45, -54], [-181, 45, 54], [-181, 16, 54]], "#8e9eaa");
+    face([[-182, 20, -36], [-182, 29, -42], [-182, 29, 42], [-182, 20, 36]], "#29333b");
+    for (const y of [36, 40]) {
+      face([[-183, y, -24], [-183, y + 4, 0], [-183, y, 24], [-183, y+1.5, 24],
+        [-183, y+5.5, 0], [-183, y+1.5, -24]], "#e4ebee", 0.4);
+    }
+    for (const l of [-1, 1]) {
+      face([[-182, 35, 30*l], [-182, 44, 27*l], [-151, 53, 63*l], [-174, 40, 55*l]], "#f1f3e9", 1);
+    }
+  } else {
+    face([[178, 17, -58], [178, 53, -58], [178, 53, 58], [178, 17, 58]], "#8292a1");
+    for (const l of [-1, 1]) {
+      face([[179, 39, 30*l], [179, 52, 34*l], [164, 56, 62*l], [177, 39, 57*l]], "#b42937", 0.8);
+    }
+    face([[179, 33, -18], [179, 45, -18], [179, 45, 18], [179, 33, 18]], "#657686", 0.6);
   }
   const fundo = ctx.createLinearGradient(0, 0, 0, 960);
-  fundo.addColorStop(0, "#132b40");
-  fundo.addColorStop(1, "#566b7a");
+  fundo.addColorStop(0, "#e9edf0");
+  fundo.addColorStop(1, "#9eacb8");
   ctx.fillStyle = fundo;
   ctx.fillRect(0, 0, 540, 960);
-  ctx.fillStyle = "#15212b88";
+  ctx.fillStyle = "#23324338";
   ctx.beginPath();
-  ctx.ellipse(270, 557, 178, 34, 0, 0, Math.PI * 2);
+  ctx.ellipse(270, 563, 186, 43, 0, 0, Math.PI * 2);
   ctx.fill();
-  for (const { projeto, cor } of faces.sort((a, b) => a.fundo - b.fundo)) {
+  for (const { p, cor } of faces.sort((a, b) => a.fundo - b.fundo)) {
     ctx.fillStyle = ctx.strokeStyle = cor;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 0.8;
     ctx.beginPath();
-    ctx.moveTo(projeto[0][0], projeto[0][1]);
-    for (const [x, y] of projeto.slice(1)) ctx.lineTo(x, y);
+    ctx.moveTo(p[0][0], p[0][1]);
+    for (const [x, y] of p.slice(1)) ctx.lineTo(x, y);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
@@ -1542,6 +1633,7 @@ function loginPage(clientId) {
   ${propostaVisual.toString()}
   ${desenharPallas3D.toString()}
   ${desenharVestido3D.toString()}
+  ${montarComparativoVestido.toString()}
   ${desenharTransito.toString()}
   ${tipoDeProducao.toString()}
   ${aprovacaoProducao.toString()}
@@ -1704,6 +1796,7 @@ function loginPage(clientId) {
         if (entry.video3D) apresentarLinks3D(item, entry.video3D, entry === chat[chat.length - 1]);
         if (entry.tarefa?.tipo === "jingle") apresentarJinglePrivado(item, entry.tarefa);
         if (videoValido(entry.roteiroVideo)) apresentarRoteiro(item, entry.roteiroVideo);
+        if (entry.comparativoVestido === true) apresentarComparativoVestido(item);
         if ((entry.proposta || entry.tentarProposta) && entry === chat[chat.length - 1]) apresentarAprovacao(item, entry);
         const gravacao = audiosDaSessao.get(entry);
         if (gravacao) apresentarAudio(item, gravacao, entry.versaoAudio);
@@ -2658,6 +2751,35 @@ function loginPage(clientId) {
       item.append(executar);
     }
 
+    function apresentarComparativoVestido(item) {
+      const quadro = document.createElement("canvas");
+      quadro.width = 540;
+      quadro.height = 960;
+      const imagem = document.createElement("canvas");
+      imagem.width = 1656;
+      imagem.height = 1096;
+      const quadroCtx = quadro.getContext("2d"), comparativoCtx = imagem.getContext("2d");
+      if (!quadroCtx || !comparativoCtx) return;
+      montarComparativoVestido(comparativoCtx, (angulo, x, y) => {
+        desenharVestido3D(quadroCtx, angulo);
+        comparativoCtx.drawImage(quadro, x, y);
+      });
+      imagem.toBlob(blob => {
+        if (!blob || !item.isConnected) return;
+        const url = URL.createObjectURL(blob);
+        videoUrls.push(url);
+        const previa = document.createElement("img");
+        previa.src = url;
+        previa.alt = "A mesma modelo com o vestido preto vista de frente, de perfil e de costas";
+        previa.style.cssText = "display:block;width:100%;height:auto;max-width:48rem";
+        const baixar = document.createElement("a");
+        baixar.href = url;
+        baixar.download = "aion-vestido-preto-comparativo.png";
+        baixar.textContent = "Baixar comparativo de frente, perfil e costas";
+        item.append(previa, baixar);
+      }, "image/png");
+    }
+
     async function gerarClipeDoRoteiro(item, body, record, roteiro, update, visual) {
       record.visual = visual;
       record.roteiroVideo = roteiro;
@@ -2730,6 +2852,10 @@ function loginPage(clientId) {
           }
         };
         item.append(video, baixar, salvar, estado);
+        if (visual === "vestido-3d") {
+          record.comparativoVestido = true;
+          apresentarComparativoVestido(item);
+        }
         const tipo = visual === "vestido-3d" ? "Giro 3D do vestido preto"
           : visual === "c4-pallas-3d" ? "Animação 3D estilizada do Citroën C4 Pallas 2010"
           : visual === "transito" ? "Animação ilustrada de trânsito" : "Clipe de legendas";
@@ -3367,7 +3493,7 @@ function loginPage(clientId) {
         apresentarAprovacao(item, record);
         const apresentacao = planoLocal.visual === "c4-pallas-3d"
           ? "Apresentação com modelo 3D estilizado do Citroën C4 Pallas 2010, em giro contínuo."
-          : planoLocal.visual === "vestido-3d" ? "Giro contínuo do vestido preto, com frente, laterais e costas."
+          : planoLocal.visual === "vestido-3d" ? "Modelo vestindo a peça em giro contínuo, com enquadramento fixo e comparativo de frente, perfil e costas."
           : planoLocal.visual === "frase" ? "Clipe com a frase solicitada."
           : "Animação ilustrada de trânsito com três cenas.";
         update(textoRoteiro(record.roteiroVideo) + "\\n\\n" + apresentacao
@@ -3718,7 +3844,12 @@ function loginPage(clientId) {
             ctx.font = "bold 32px system-ui";
             const centro = visual === "transito" ? 856 : visual === "c4-pallas-3d" ? 735 : 480;
             const altura = visual === "transito" ? 33 : 48;
-            scenes[index].forEach((line, row) => ctx.fillText(line, 270, centro + (row - (scenes[index].length - 1) / 2) * altura, 460));
+            if (visual === "c4-pallas-3d") {
+              ctx.fillStyle = "#243745";
+              ctx.fillText("C4 Pallas 2010 · Sedã", 270, centro, 460);
+            } else {
+              scenes[index].forEach((line, row) => ctx.fillText(line, 270, centro + (row - (scenes[index].length - 1) / 2) * altura, 460));
+            }
           }
           ctx.fillStyle = "#8bbcff";
           ctx.fillRect(48, visual ? 930 : 885, 444 * elapsed / duration, 6);
