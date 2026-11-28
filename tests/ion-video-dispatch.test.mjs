@@ -247,3 +247,45 @@ test("conversa do proprietário executa vídeo e jingle e devolve estados reais"
   assert.equal(transcricao.status, 200);
   assert.equal((await transcricao.json()).texto, "Transcrição confirmada.");
 });
+
+
+test("o player embute ilustrações animadas e reconhece pedidos de vídeo 3D em português", async () => {
+  const resposta = await worker.fetch(new Request("https://ion.example.test/"), {
+    ION_OWNER_EMAIL: "owner@gmail.com",
+    ION_GOOGLE_CLIENT_ID: "worker-test.apps.googleusercontent.com",
+  });
+  const html = await resposta.text();
+  const script = html.match(/<script>\s*([\s\S]*?)<\/script>/)[1];
+  const funcoes = script.slice(script.indexOf("function normalizarPedido"), script.indexOf("function tipoDeProducao"));
+  const { pedidoDeVideo3D, pedidoDeVestido3D, desenharVestido3D, desenharTransito } = new Script(
+    funcoes + "\n({ pedidoDeVideo3D, pedidoDeVestido3D, desenharVestido3D, desenharTransito });"
+  ).runInNewContext();
+  assert.equal(pedidoDeVestido3D("Crie um vídeo em 3D do vestido preto com 15s"), "renderizar");
+  assert.equal(pedidoDeVideo3D("Quero um vídeo de 3D"), true);
+  assert.equal(pedidoDeVideo3D("Como funciona um vídeo em 3D?"), false);
+  const quadro = (desenhar, progresso) => {
+    const pontos = [];
+    const ctx = {
+      createLinearGradient: () => ({ addColorStop() {} }),
+      fillRect(...args) { pontos.push(args); },
+      moveTo(...args) { pontos.push(args); },
+      lineTo(...args) { pontos.push(args); },
+      arc(...args) { pontos.push(args); },
+      beginPath() {}, ellipse() {}, closePath() {}, fill() {}, stroke() {},
+    };
+    desenhar(ctx, progresso, 0);
+    return pontos;
+  };
+  assert.notDeepEqual(quadro(desenharVestido3D, 0), quadro(desenharVestido3D, 0.25));
+  assert.notDeepEqual(quadro(desenharTransito, 0.1), quadro(desenharTransito, 0.7));
+});
+
+test("há resposta de timeout sem chamar um segundo modelo depois do prazo", async () => {
+  const chamadas = [];
+  const ia = { run: modelo => {
+    chamadas.push(modelo);
+    return new Promise(resolve => setTimeout(() => resolve({ response: "tarde" }), 50));
+  } };
+  await assert.rejects(executarMotor(ia, "conversa", {}, texto => texto, { prazoMs: 5 }), { name: "TimeoutError" });
+  assert.equal(chamadas.length, 1);
+});
