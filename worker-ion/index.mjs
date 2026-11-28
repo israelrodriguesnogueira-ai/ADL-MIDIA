@@ -347,7 +347,7 @@ function pedidoDeVestido3D(texto) {
 
 function pedidoDeVideo3D(texto) {
   const pedido = normalizarPedido(texto);
-  const produzir = /\b(?:crie|cria|criar|gere|gera|gerar|produza|produzir|faca|faz|fazer|renderize|renderizar|quero|preciso|gostaria|monte|anime)\b/.test(pedido);
+  const produzir = /\b(?:crie|cria|criar|gere|gera|gerar|produza|produzir|faca|faz|fazer|renderize|renderizar|quero|preciso|gostaria|monte|anime|apresente|mostre)\b/.test(pedido);
   return /\b3d\b/.test(pedido) && /\b(?:video|animacao|render|giro)\b/.test(pedido)
     && (produzir || /^(?:um )?(?:video|animacao|render|giro)\b/.test(pedido.trim()));
 }
@@ -452,6 +452,150 @@ function desenharTransito(ctx, progresso, cena) {
   ctx.beginPath();
   ctx.arc(332, y - 39, 8, 0, Math.PI * 2);
   ctx.fill();
+}
+
+
+function propostaVisual(pedido) {
+  const texto = normalizarPedido(pedido);
+  const video = /\b(?:video|short|animacao|roteiro)\b/.test(texto);
+  const transito = /\b(?:transito|seguranca viaria)\b/.test(texto);
+  const roteiroApenas = /\broteiro\b/.test(texto) && !/\b(?:mp4|renderize|gere o video)\b/.test(texto);
+  const semVoz = /\bsem (?:audio|narracao|voz|som)\b/.test(texto);
+  if (pedidoDeVideo3D(pedido) || pedidoDeVestido3D(pedido)) {
+    const carro = /\bc4\s*pallas\b/.test(texto);
+    const vestido = /\bvestido preto\b/.test(texto) || pedidoDeVestido3D(pedido) === "renderizar";
+    if (carro && /\b20\d{2}\b/.test(texto) && !/\b2010\b/.test(texto)) return null;
+    if (!carro && !vestido) return null;
+    const duracao = duracaoSolicitada(pedido);
+    if (duracao != null && duracao !== 15) return null;
+    const fala = !semVoz && (carro || /\b(?:audio|narracao|voz|som)\b/.test(texto));
+    const titulo = carro ? "Citroën C4 Pallas 2010" : "Vestido preto em 3D";
+    return { visual: carro ? "c4-pallas-3d" : "vestido-3d", roteiroApenas, roteiro: { titulo, cenas: [
+      { segundos: 5, visual: "Vista frontal da representação tridimensional.", fala: fala ? (carro ? "Citroën C4 Pallas, modelo dois mil e dez." : "Vestido preto. Veja o modelo de frente.") : "", legenda: carro ? "C4 Pallas 2010 · Frente" : "Frente" },
+      { segundos: 5, visual: "O modelo gira e mostra o perfil.", fala: fala ? "O giro mostra o perfil e o contorno do modelo." : "", legenda: "Perfil" },
+      { segundos: 5, visual: "O giro revela a parte traseira antes de voltar à frente.", fala: fala ? "Veja a parte de trás neste giro completo." : "", legenda: "Vista traseira" },
+    ] } };
+  }
+  const frase = pedido.match(/[“"]([^”"\n]{1,100})[”"]/)?.[1]?.trim();
+  if (video && frase && /\bfrase\b/.test(texto) && /\b(?:crie|criar|gere|gerar|faca|produza|quero)\b/.test(texto)) {
+    const segundos = duracaoSolicitada(pedido) ?? 15;
+    if (segundos >= 3 && segundos <= 60 && (semVoz || frase.length <= segundos * 13)) {
+      const parte = { segundos, visual: "Clipe vertical com a frase na tela.", fala: semVoz ? "" : frase, legenda: frase };
+      return { visual: "frase", roteiroApenas, roteiro: { titulo: "Clipe com a sua frase", cenas: [parte] } };
+    }
+  }
+  if (!video || !transito || /\b(?:nao (?:crie|gere|faca)|cancele)\b/.test(texto)) return null;
+  if (!/\b(?:crie|cria|criar|creio|faca|gerar|gere|monte|quero|produza|escreva)\b/.test(texto)) return null;
+  const segundos = duracaoSolicitada(pedido) ?? 15;
+  const cenasPedidas = /\b(\d+|uma|duas|tres|quatro|cinco)\s+cenas?\b/.exec(texto)?.[1];
+  if (segundos !== 15 || (cenasPedidas && !["3", "tres"].includes(cenasPedidas))) return null;
+  return { visual: "transito", roteiroApenas, roteiro: { titulo: "Trânsito seguro", cenas: [
+    { segundos: 5, visual: "Um carro se aproxima da faixa de pedestres.", fala: semVoz ? "" : "Motorista, reduza a velocidade perto da faixa.", legenda: "Reduza perto da faixa" },
+    { segundos: 5, visual: "O carro para e a pessoa espera ao lado da faixa.", fala: semVoz ? "" : "Pedestre, espere os veículos pararem.", legenda: "Espere os veículos pararem" },
+    { segundos: 5, visual: "A pessoa atravessa pela faixa.", fala: semVoz ? "" : "Atravesse pela faixa depois de olhar os dois lados.", legenda: "Olhe para os dois lados" },
+  ] } };
+}
+
+function idVideoYouTube(texto) {
+  for (const link of texto.match(/https:\/\/[^\s<>"”]+/g) ?? []) {
+    try {
+      const url = new URL(link.replace(/[.,!?;)]+$/, ""));
+      const host = url.hostname;
+      if (url.port || url.username || url.password) continue;
+      const id = host === "youtu.be" ? url.pathname.slice(1)
+        : ["youtube.com", "www.youtube.com", "m.youtube.com"].includes(host)
+          ? (url.pathname === "/watch" ? url.searchParams.get("v") : url.pathname.match(/^\/(?:shorts|live|embed)\/([^/]+)$/)?.[1])
+          : null;
+      if (/^[A-Za-z0-9_-]{11}$/.test(id ?? "")) return id;
+    } catch {}
+  }
+  return null;
+}
+
+async function identificarVideoYouTube(id) {
+  const fonte = "https://www.youtube.com/watch?v=" + id;
+  const limite = "Para analisar a imagem, envie capturas do vídeo. Para analisar a fala, envie a transcrição.";
+  try {
+    const resposta = await fetch("https://www.youtube.com/oembed?format=json&url=" + encodeURIComponent(fonte), {
+      signal: AbortSignal.timeout(6000),
+    });
+    if (resposta.ok) {
+      const dados = await resposta.json();
+      const titulo = typeof dados.title === "string" ? dados.title.trim().slice(0, 200) : "";
+      const canal = typeof dados.author_name === "string" ? dados.author_name.trim().slice(0, 150) : "";
+      if (titulo) return "Título público no YouTube: " + titulo + (canal ? "\nCanal: " + canal : "")
+        + "\nFonte: " + fonte + "\nConsultei os dados públicos do link. " + limite;
+    }
+  } catch {}
+  return "O YouTube não devolveu dados públicos verificáveis para esse link.\nFonte: " + fonte + "\n" + limite;
+}
+
+function desenharPallas3D(ctx, progresso) {
+  const angulo = (progresso - 0.105) * Math.PI * 2;
+  const seno = Math.sin(angulo);
+  const cosseno = Math.cos(angulo);
+  const faces = [];
+  function face(pontos, cor) {
+    const projeto = pontos.map(([x, y, z]) => {
+      const lateral = x * cosseno + z * seno;
+      const fundo = z * cosseno - x * seno;
+      const escala = 690 / (690 - fundo);
+      return [270 + lateral * escala, 530 + (-y - fundo * 0.23) * escala, fundo];
+    });
+    faces.push({ projeto, cor, fundo: projeto.reduce((soma, p) => soma + p[2], 0) / projeto.length });
+  }
+  const perfil = [[-166, 35, 63], [-155, 59, 71], [-96, 71, 74], [-42, 111, 62],
+    [47, 110, 63], [99, 73, 73], [151, 68, 71], [166, 45, 63]];
+  const baixo = perfil.map(([x, , z]) => [x, 21, z]);
+  const alto = perfil.map(([x, y, z]) => [x, y, z]);
+  for (let i = 1; i < perfil.length; i++) {
+    const [a, b] = [alto[i - 1], alto[i]];
+    face([a, b, [b[0], b[1], -b[2]], [a[0], a[1], -a[2]]],
+      i === 3 || i === 5 ? "#526a7c" : "#aab8c5");
+  }
+  for (const lado of [-1, 1]) {
+    const p = ([x, y, z]) => [x, y, z * lado];
+    for (let i = 1; i < perfil.length; i++) {
+      face([p(alto[i - 1]), p(alto[i]), p(baixo[i]), p(baixo[i - 1])],
+        i % 2 ? "#67798a" : "#758899");
+    }
+    face([[-89, 72, 75], [-39, 105, 64], [44, 104, 65], [88, 73, 75]].map(p), "#263c4c");
+    face([[12, 73, 76], [12, 104, 66], [17, 104, 66], [17, 73, 76]].map(p), "#7d91a3");
+    for (const eixo of [-105, 106]) {
+      const roda = (r, z) => Array.from({ length: 20 }, (_, i) => {
+        const a = i * Math.PI / 10;
+        return [eixo + Math.cos(a) * r, 24 + Math.sin(a) * r, z * lado];
+      });
+      face(roda(30, 78), "#151e24");
+      face(roda(17, 79), "#b5bfc8");
+      face(roda(6, 80), "#526270");
+    }
+  }
+  face([[167, 22, -63], [167, 45, -63], [167, 45, 63], [167, 22, 63]], "#526273");
+  face([[-167, 22, -63], [-167, 35, -63], [-167, 35, 63], [-167, 22, 63]], "#576677");
+  for (const z of [-54, 54]) {
+    face([[168, 40, z - 9], [167, 50, z - 9], [167, 50, z + 9], [168, 40, z + 9]], "#eaf3ff");
+    face([[-168, 35, z - 9], [-167, 45, z - 9], [-167, 45, z + 9], [-168, 35, z + 9]], "#bd384a");
+  }
+  const fundo = ctx.createLinearGradient(0, 0, 0, 960);
+  fundo.addColorStop(0, "#132b40");
+  fundo.addColorStop(1, "#566b7a");
+  ctx.fillStyle = fundo;
+  ctx.fillRect(0, 0, 540, 960);
+  ctx.fillStyle = "#15212b88";
+  ctx.beginPath();
+  ctx.ellipse(270, 557, 178, 34, 0, 0, Math.PI * 2);
+  ctx.fill();
+  for (const { projeto, cor } of faces.sort((a, b) => a.fundo - b.fundo)) {
+    ctx.fillStyle = ctx.strokeStyle = cor;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(projeto[0][0], projeto[0][1]);
+    for (const [x, y] of projeto.slice(1)) ctx.lineTo(x, y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
 }
 
 function tipoDeProducao(texto, projeto) {
@@ -719,6 +863,16 @@ async function responderConversa(request, env, armazenamento) {
       return Response.json({ erro: "O roteiro anterior é inválido." }, { status: 400 });
     }
     const pedido = mensagens.at(-1).content;
+    const videoYouTube = idVideoYouTube(pedido);
+    if (videoYouTube) return Response.json({ texto: await identificarVideoYouTube(videoYouTube) }, {
+      headers: { "Cache-Control": "no-store" },
+    });
+    const pedidoNormalizadoParaMidia = normalizarPedido(pedido);
+    if (/\b(?:video|youtube)\b/.test(pedidoNormalizadoParaMidia)
+        && /\b(?:analis\w*|assist\w*|visual|transcri\w*|legendas|acesse|acessa)\b/.test(pedidoNormalizadoParaMidia)
+        && mensagens.slice(0, -1).some(m => m.role === "user" && idVideoYouTube(m.content))) {
+      return Response.json({ texto: "Para analisar o visual do vídeo, envie capturas. Para analisar a fala, envie a transcrição." });
+    }
     const vestido3D = pedidoDeVestido3D(pedido);
     if (vestido3D === "renderizar") {
       return executarWorkflow(request, env, armazenamento, { workflow: WORKFLOW_VIDEO_3D, video3D: true });
@@ -786,7 +940,7 @@ async function responderConversa(request, env, armazenamento) {
           + " segundos; ajuste as notas ou o BPM para respeitar esse limite." : "")
         + (ultimaPartitura ? " A última versão é " + JSON.stringify(ultimaPartitura) + "." : "")
       : "";
-    const instrucaoConversa = "Você é o Aion. Responda em português brasileiro. Em pedidos de continuidade, use o projeto que o usuário indicou, preserve as decisões dele e retome a última etapa sustentada pelo histórico. Distinga etapas concluídas de propostas e use as correções mais recentes. Peça só o dado que faltar para avançar. ";
+    const instrucaoConversa = "Você é o Aion, um aplicativo web privado. Responda em português brasileiro. Nunca invente uma publicação em loja, o nome do modelo que atende este pedido, uma consulta feita, nem o conteúdo de um vídeo, arquivo ou gravação. O resultado de ler uma resposta em voz alta é distinto de um arquivo de áudio gerado. Para aplicações financeiras, explique apenas cálculos e simulações verificáveis, sem apresentar projeções como execução ou recomendar plataformas com base em retornos supostos. Se perguntarem sobre o histórico, use somente o contexto disponível nesta sessão. Em pedidos de continuidade, use o projeto que o usuário indicou, preserve as decisões dele e retome a última etapa sustentada pelo histórico. Distinga etapas concluídas de propostas e use as correções mais recentes. Peça só o dado que faltar para avançar. ";
     const orientacaoGeral = "Comece pelo resultado solicitado. Em perguntas simples, responda em poucas frases. Quando pedirem detalhes ou um artefato, entregue o conteúdo necessário. Gere código somente se ele pedir explicitamente código, programação ou um arquivo-fonte. Se o usuário pedir um arquivo final ou a execução de uma tarefa, use a capacidade disponível. Quando faltar uma informação indispensável, faça uma pergunta curta e específica. Quando pedirem código, use um bloco identificado pela linguagem. "
             + "A interface do Aion pode ler respostas em voz alta. Quando perguntarem como ouvir uma resposta, indique o botão de alto-falante abaixo dela ou o comando \"Leia a última resposta\". Nunca afirme que a reprodução começou sem confirmação da interface. "
             + "Para manutenção automotiva, diferencie correia dentada, que sincroniza virabrequim e comando de válvulas, da correia de acessórios, que pode acionar o alternador. "
@@ -1298,6 +1452,9 @@ function loginPage(clientId) {
   ${normalizarPedido.toString()}
   ${pedidoDeVestido3D.toString()}
   ${pedidoDeVideo3D.toString()}
+  ${duracaoSolicitada.toString()}
+  ${propostaVisual.toString()}
+  ${desenharPallas3D.toString()}
   ${desenharVestido3D.toString()}
   ${desenharTransito.toString()}
   ${tipoDeProducao.toString()}
@@ -2423,7 +2580,8 @@ function loginPage(clientId) {
         video.src = url;
         const baixar = document.createElement("a");
         baixar.href = url;
-        baixar.download = (visual === "vestido-3d" ? "aion-vestido-3d" : "aion-clipe") + "." + extension;
+        baixar.download = (visual === "vestido-3d" ? "aion-vestido-3d"
+          : visual === "c4-pallas-3d" ? "aion-c4-pallas-2010-3d" : "aion-clipe") + "." + extension;
         baixar.textContent = "Baixar clipe";
         const salvar = document.createElement("button");
         salvar.type = "button";
@@ -2442,6 +2600,7 @@ function loginPage(clientId) {
         };
         item.append(video, baixar, salvar, estado);
         const tipo = visual === "vestido-3d" ? "Giro 3D do vestido preto"
+          : visual === "c4-pallas-3d" ? "Animação 3D estilizada do Citroën C4 Pallas 2010"
           : visual === "transito" ? "Animação ilustrada de trânsito" : "Clipe de legendas";
         update(tipo + (temNarracao ? " com narração Faber" : " sem narração")
           + " · " + segundos + " s · " + extension.toUpperCase() + ". Abra ou baixe o arquivo nesta sessão.");
@@ -2718,8 +2877,7 @@ function loginPage(clientId) {
       const versaoAnterior = findLastMessage(entrada => Number.isInteger(entrada.versaoAudio))?.versaoAudio || 0;
       const respostaAnteriorDoProjeto = current[current.length - 3];
       const ultimaProposta = respostaAnteriorDoProjeto?.proposta || respostaAnteriorDoProjeto?.tentarProposta
-        ? respostaAnteriorDoProjeto
-        : null;
+        ? respostaAnteriorDoProjeto : null;
       const revisaoComAprovacao = !file && request.match(/^(.*?)\s*[,.;!?]?\s+e\s+(?:agora\s+)?(pode\s+(?:executar|fazer|gerar|produzir))[.!?]*$/i);
       const revisaoDoVideo = revisaoComAprovacao && videoValido(respostaAnteriorDoProjeto?.roteiroVideo)
         && tipoDeProducao(revisaoComAprovacao[1], "video") === "video" ? revisaoComAprovacao[1] : null;
@@ -2728,6 +2886,11 @@ function loginPage(clientId) {
       const mensagemAnterior = current[current.length - 4];
       const recuperarJingle = !file && aprovou && !ultimaProposta
         && mensagemAnterior?.who === "Você" && tipoDeProducao(mensagemAnterior.text) === "musica";
+      const propostaAnterior = !file && aprovou ? propostaVisual(pedidoOriginalDaProposta) : null;
+      if (!ultimaProposta?.visual && propostaAnterior && !propostaAnterior.roteiroApenas) {
+        await gerarClipeDoRoteiro(item, body, record, propostaAnterior.roteiro, update, propostaAnterior.visual);
+        return;
+      }
       if (!file && aprovou && !ultimaProposta && !recuperarJingle) {
         update("Ainda não encontrei uma proposta para executar nesta conversa. Peça a criação do áudio ou do vídeo que você quer.");
         return;
@@ -2739,8 +2902,8 @@ function loginPage(clientId) {
         }
         const roteiro = ultimaProposta.roteiroVideo;
         if (videoValido(roteiro)) {
-          if (ultimaProposta.visual !== "vestido-3d" && pedidoDeVideo3D(pedidoOriginalDaProposta)) {
-            proporVestido3D(pedidoOriginalDaProposta);
+          if (!ultimaProposta.visual && pedidoDeVideo3D(pedidoOriginalDaProposta)) {
+            update("O roteiro antigo precisa de um modelo 3D compatível. Posso criar o vestido preto ou o C4 Pallas 2010.");
             return;
           }
           await gerarClipeDoRoteiro(item, body, record, roteiro, update,
@@ -3004,23 +3167,32 @@ function loginPage(clientId) {
           : "Arquivo adicionado nesta sessão. Use Baixar arquivo para salvar.");
         return;
       }
-      if (!file && (pedidoDeVestido3D(request) || pedidoDeVideo3D(request))) {
-        proporVestido3D(request);
-        return;
-      }
-      function proporVestido3D(pedido) {
-        if (pedidoDeVestido3D(pedido) !== "renderizar") {
-          update("O Aion consegue renderizar o modelo 3D do vestido preto em um giro vertical de 15 segundos. Para produzir esse modelo, peça um vídeo 3D do vestido preto. Outros objetos e cenas 3D ainda precisam de um renderizador compatível.");
-          return;
-        }
-        record.visual = "vestido-3d";
-        record.roteiroVideo = { titulo: "Vestido preto em 3D", cenas: [{
-          segundos: 15, visual: "Giro contínuo do vestido preto, mostrando frente, laterais e costas.", fala: "", legenda: "Vestido preto em 3D",
-        }] };
+      const revisaoComVoz = /^(?:agora )?com (?:audio|som|narracao|voz)(?: e (?:audio|som|narracao|voz))?$/.test(command);
+      const propostaComVoz = revisaoComVoz && ["transito", "c4-pallas-3d", "vestido-3d"].includes(respostaAnteriorDoProjeto?.visual);
+      const pedidoParaProposta = propostaComVoz
+        ? (respostaAnteriorDoProjeto.visual === "transito" ? "Crie um vídeo de trânsito com narração"
+          : respostaAnteriorDoProjeto.visual === "c4-pallas-3d" ? "Crie um vídeo 3D do C4 Pallas 2010 com narração"
+          : "Crie um vídeo 3D do vestido preto com narração")
+        : request;
+      const planoLocal = !file && propostaVisual(pedidoParaProposta);
+      if (planoLocal) {
+        record.visual = planoLocal.visual;
+        record.roteiroVideo = planoLocal.roteiro;
         record.proposta = true;
         apresentarRoteiro(item, record.roteiroVideo);
         apresentarAprovacao(item, record);
-        update("Proposta: giro contínuo do vestido preto em 3D, vertical, 15 segundos, sem narração. Toque em Executar proposta ou diga “pode executar”.");
+        const apresentacao = planoLocal.visual === "c4-pallas-3d"
+          ? "Apresentação com modelo 3D estilizado do Citroën C4 Pallas 2010, em giro contínuo."
+          : planoLocal.visual === "vestido-3d" ? "Giro contínuo do vestido preto, com frente, laterais e costas."
+          : planoLocal.visual === "frase" ? "Clipe com a frase solicitada."
+          : "Animação ilustrada de trânsito com três cenas.";
+        update(textoRoteiro(record.roteiroVideo) + "\\n\\n" + apresentacao
+          + " Toque em Executar proposta ou diga “pode executar” para gerar o vídeo.");
+        return;
+      }
+      if (!file && (pedidoDeVestido3D(request) || pedidoDeVideo3D(request))) {
+        update("Posso renderizar dois modelos 3D em giro vertical de 15 segundos: vestido preto ou Citroën C4 Pallas 2010 estilizado. Qual você quer?");
+        return;
       }
       const bentoRequest = /\\b(?:crie|cria|criar|faca|faz|fazer|gere|gerar|anime|animar|produza|quero)\\b/.test(command)
         && /\\b(?:desenho|animacao|video)\\b/.test(command)
@@ -3031,6 +3203,16 @@ function loginPage(clientId) {
       const confirmaFoto = /^(?:sim|isso|isso mesmo|exato|exatamente|correto)$/.test(command)
         && respostaAnterior?.who === "Ion"
         && /(?:análise (?:visual|de fotos)|analisar a foto|modelo de visão)/i.test(respostaAnterior.text);
+      const criarImagem = !file && /\\b(?:crie|cria|criar|gere|gerar|faca|fazer|produza|desenhe)\\b.*\\b(?:foto|imagem|desenho)\\b/.test(command)
+        && !/\\b(?:video|short)\\b/.test(command);
+      if (criarImagem) {
+        update("O Aion pode analisar ou disponibilizar uma foto anexada. A geração de uma imagem nova pelo chat ainda não está integrada.");
+        return;
+      }
+      if (!file && !fotoAnterior && /^(?:o que e isso|identifique (?:a|esta|essa) foto|(?:baixe|baixa|baixar) (?:a|esta|essa) foto)(?: que eu escolhi)?$/.test(command)) {
+        update("Anexe a foto nesta conversa para eu poder analisar ou disponibilizar o arquivo.");
+        return;
+      }
       if (!videoRequest && !trafficRequest && fotoAnterior
           && (attachment || confirmaFoto || /\\b(?:o que (?:e|tem|aparece)|qual (?:e|seria)|identifi\\w*|analis\\w*|descrev\\w*|descri\\w*|foto|imagem)\\b/.test(command))) {
         if (/\\b(?:baix\\w*|salv\\w*|abr\\w*)\\b/.test(command)) {
@@ -3328,9 +3510,11 @@ function loginPage(clientId) {
             ctx.fillRect(0, 0, 540, 960);
           }
           if (visual === "vestido-3d") desenharVestido3D(ctx, elapsed / duration);
+          if (visual === "c4-pallas-3d") desenharPallas3D(ctx, elapsed / duration);
           if (visual === "transito") {
             const inicio = cortes[index - 1] ?? 0;
-            desenharTransito(ctx, (elapsed - inicio) / (cortes[index] - inicio), index);
+            const progresso = (elapsed - inicio) / (cortes[index] - inicio);
+            desenharTransito(ctx, scenes.length === 3 ? (index + progresso) / 3 : progresso, index);
           }
           ctx.textAlign = "center";
           ctx.fillStyle = "#9dcfff";
@@ -3343,7 +3527,7 @@ function loginPage(clientId) {
             }
             ctx.fillStyle = "white";
             ctx.font = "bold 32px system-ui";
-            const centro = visual === "transito" ? 856 : 480;
+            const centro = visual === "transito" ? 856 : visual === "c4-pallas-3d" ? 735 : 480;
             const altura = visual === "transito" ? 33 : 48;
             scenes[index].forEach((line, row) => ctx.fillText(line, 270, centro + (row - (scenes[index].length - 1) / 2) * altura, 460));
           }
