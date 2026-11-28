@@ -289,3 +289,63 @@ test("há resposta de timeout sem chamar um segundo modelo depois do prazo", asy
   await assert.rejects(executarMotor(ia, "conversa", {}, texto => texto, { prazoMs: 5 }), { name: "TimeoutError" });
   assert.equal(chamadas.length, 1);
 });
+
+
+test("pedidos do histórico produzem propostas locais de carro, vestido e trânsito narrado", async () => {
+  const resposta = await worker.fetch(new Request("https://ion.example.test/"), {
+    ION_OWNER_EMAIL: "owner@gmail.com",
+    ION_GOOGLE_CLIENT_ID: "worker-test.apps.googleusercontent.com",
+  });
+  const script = (await resposta.text()).match(/<script>\s*([\s\S]*?)<\/script>/)[1];
+  const parte = script.slice(script.indexOf("function normalizarPedido"), script.indexOf("function tipoDeProducao"));
+  const { propostaVisual, desenharPallas3D } = new Script(parte + "\n({ propostaVisual, desenharPallas3D });").runInNewContext();
+  const carro = propostaVisual("Ok faça um vídeo 3D para mim do carro C4 Pallas de 15 segundos com apresentação desse modelo 2010");
+  assert.equal(carro.visual, "c4-pallas-3d");
+  assert.equal(carro.roteiro.cenas.reduce((soma, cena) => soma + cena.segundos, 0), 15);
+  assert.ok(carro.roteiro.cenas.every(cena => cena.fala));
+  assert.equal(propostaVisual("Crie um vídeo 3D de outro carro"), null);
+  assert.equal(propostaVisual("Crie um vídeo 3D do C4 Pallas 2011"), null);
+  assert.equal(propostaVisual("Crie um vídeo 3D do C4 Pallas 2010 de 30 segundos"), null);
+  const vestido = propostaVisual("Ok faça um vídeo do vestido preto 3D para mim de 15 segundos frente lá de costas como modelo");
+  assert.equal(vestido.visual, "vestido-3d");
+  assert.ok(propostaVisual("Ah eu creio para mim um vídeo de trânsito com narração").roteiro.cenas.every(cena => cena.fala));
+  assert.equal(propostaVisual("criar um roteiro de 15 segundos sobre segurança no trânsito com três cenas de narração").roteiroApenas, true);
+  const frase = propostaVisual("Crie um vídeo vertical de 15 segundos com a frase “O primeiro passo é difícil. Tente mais uma vez.” Use essa frase na narração e na legenda.");
+  assert.equal(frase.roteiro.cenas[0].fala, "O primeiro passo é difícil. Tente mais uma vez.");
+  assert.equal(frase.roteiro.cenas[0].legenda, frase.roteiro.cenas[0].fala);
+  const quadro = progresso => {
+    const pontos = [];
+    const ctx = { createLinearGradient: () => ({ addColorStop() {} }), fillRect() {}, beginPath() {},
+      ellipse() {}, moveTo(...p) { pontos.push(p); }, lineTo(...p) { pontos.push(p); }, closePath() {}, fill() {}, stroke() {} };
+    desenharPallas3D(ctx, progresso);
+    return pontos;
+  };
+  assert.notDeepEqual(quadro(0), quadro(0.25));
+});
+
+
+test("link do YouTube usa o ID canônico e metadados sem inventar análise", async t => {
+  const resposta = await worker.fetch(new Request("https://ion.example.test/"), {
+    ION_OWNER_EMAIL: "owner@gmail.com",
+    ION_GOOGLE_CLIENT_ID: "worker-test.apps.googleusercontent.com",
+  });
+  const html = await resposta.text();
+  assert.match(html, /function propostaVisual/);
+  const { readFile } = await import("node:fs/promises");
+  const fonte = await readFile(new URL("../worker-ion/index.mjs", import.meta.url), "utf8");
+  const funcoes = fonte.slice(fonte.indexOf("function idVideoYouTube"), fonte.indexOf("function desenharPallas3D"));
+  let consultado;
+  const { idVideoYouTube, identificarVideoYouTube } = new Script(
+    funcoes + "\n({ idVideoYouTube, identificarVideoYouTube });"
+  ).runInNewContext({ URL, AbortSignal, fetch: async url => {
+    consultado = new URL(url);
+    return Response.json({ title: "Título confirmado", author_name: "Canal confirmado" });
+  } });
+  assert.equal(idVideoYouTube("https://youtu.be/FjEHsyiX3Ng?is=abc"), "FjEHsyiX3Ng");
+  assert.equal(idVideoYouTube("https://youtube.com.exemplo.test/watch?v=FjEHsyiX3Ng"), null);
+  const dados = await identificarVideoYouTube("FjEHsyiX3Ng");
+  assert.equal(consultado.hostname, "www.youtube.com");
+  assert.equal(consultado.searchParams.get("url"), "https://www.youtube.com/watch?v=FjEHsyiX3Ng");
+  assert.match(dados, /Título confirmado/);
+  assert.match(dados, /envie capturas do vídeo/);
+});
