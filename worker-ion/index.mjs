@@ -336,12 +336,122 @@ function pedidoDeVestido3D(texto) {
   const acao = /^(?:(?:voce )?(?:pode|poderia|consegue) )?(?:crie|criar|gere|gerar|produza|produzir|faca|fazer|renderize|renderizar) (?:para mim )?/;
   const instrucao = pedido.replace(desejo, "").replace(acao, "");
   const descricao = instrucao.replace(/^(?:um|o) /, "");
-  const demonstracao = /^video (?:vertical )?3d(?: vertical)? (?:do |de um |de )?vestido(?: preto(?: de alfaiataria)?)?(?:(?: (?:com |de |duracao de |com duracao de )?15 segundos)|(?: vertical)|(?: com giro continuo(?: mostrando frente lateral e costas)?))*$/;
+  const demonstracao = /^video (?:vertical )?(?:em |de )?3d(?: vertical)? (?:do |de um |de )?vestido(?: preto(?: de alfaiataria)?)?(?:(?: (?:com |de |duracao de |com duracao de )?15(?: segundos|s))|(?: vertical)|(?: com giro continuo(?: mostrando frente lateral e costas)?))*$/;
   const especificacoes = descricao.split(/ o resultado esperado e (?:um )?/);
   if (especificacoes.every(parte => demonstracao.test(parte))) return "renderizar";
   if (instrucao !== pedido && /\bvideo\b/.test(descricao)
       && /\b3d\b/.test(descricao) && /\bvestido\b/.test(descricao)) return "incompativel";
   return null;
+}
+
+
+function pedidoDeVideo3D(texto) {
+  const pedido = normalizarPedido(texto);
+  const produzir = /\b(?:crie|cria|criar|gere|gera|gerar|produza|produzir|faca|faz|fazer|renderize|renderizar|quero|preciso|gostaria|monte|anime)\b/.test(pedido);
+  return /\b3d\b/.test(pedido) && /\b(?:video|animacao|render|giro)\b/.test(pedido)
+    && (produzir || /^(?:um )?(?:video|animacao|render|giro)\b/.test(pedido.trim()));
+}
+
+function desenharVestido3D(ctx, progresso) {
+  const perfil = [[223, 60, 32], [240, 88, 39], [270, 86, 44], [320, 71, 43],
+    [375, 58, 35], [420, 68, 45], [475, 93, 59], [585, 115, 69], [715, 151, 86]];
+  const angulo = progresso * Math.PI * 2;
+  const luz = [0.52, -0.18, 0.83];
+  const lados = 40;
+  function ponto(indice, setor) {
+    const [altura, largura, profundidade] = perfil[indice];
+    const theta = setor * 2 * Math.PI / lados;
+    const dobra = indice < 5 ? 1 : 1 + (indice - 4) * 0.013 * Math.cos(theta * 8);
+    const x = Math.cos(theta) * largura * dobra;
+    const z = Math.sin(theta) * profundidade * dobra;
+    const giradoX = x * Math.cos(angulo) + z * Math.sin(angulo);
+    const giradoZ = z * Math.cos(angulo) - x * Math.sin(angulo);
+    const dist = 780 / (780 - giradoZ);
+    const gola = indice === 0 ? 31 * Math.max(0, Math.sin(theta)) ** 3 : 0;
+    return [270 + giradoX * dist, 470 + (altura + gola - 470) * dist,
+      giradoX, altura + gola, giradoZ];
+  }
+  const faces = [];
+  for (let anel = 0; anel < perfil.length - 1; anel++) {
+    for (let setor = 0; setor < lados; setor++) {
+      const p = [ponto(anel, setor), ponto(anel, setor + 1),
+        ponto(anel + 1, setor + 1), ponto(anel + 1, setor)];
+      const a = p[1].slice(2).map((v, i) => v - p[0][i + 2]);
+      const b = p[3].slice(2).map((v, i) => v - p[0][i + 2]);
+      const n = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+      const intensidade = Math.max(0, n.reduce((sum, componente, i) => sum + componente * luz[i], 0) / Math.hypot(...n));
+      const tom = Math.round(18 + 55 * intensidade);
+      faces.push({ p, z: p.reduce((soma, v) => soma + v[4], 0), tom });
+    }
+  }
+  const fundo = ctx.createLinearGradient(0, 0, 0, 960);
+  fundo.addColorStop(0, "#dfd5c7");
+  fundo.addColorStop(1, "#827365");
+  ctx.fillStyle = fundo;
+  ctx.fillRect(0, 0, 540, 960);
+  ctx.fillStyle = "#2a201b55";
+  ctx.beginPath();
+  ctx.ellipse(270, 757, 153, 25, 0, 0, Math.PI * 2);
+  ctx.fill();
+  faces.sort((a, b) => a.z - b.z);
+  for (const { p, tom } of faces) {
+    ctx.fillStyle = ctx.strokeStyle = "rgb(" + tom + "," + tom + "," + (tom + 7) + ")";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(p[0][0], p[0][1]);
+    for (const [x, y] of p.slice(1)) ctx.lineTo(x, y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+}
+
+function desenharTransito(ctx, progresso, cena) {
+  ctx.fillStyle = "#bee3f4";
+  ctx.fillRect(0, 0, 540, 580);
+  ctx.fillStyle = "#95a8a9";
+  for (let i = 0; i < 7; i++) ctx.fillRect(i * 84, 260 - (i % 3) * 45, 68, 250);
+  ctx.fillStyle = "#547d50";
+  ctx.fillRect(0, 485, 540, 330);
+  ctx.fillStyle = "#343e46";
+  ctx.fillRect(0, 535, 540, 250);
+  ctx.fillStyle = "#e9e4d5";
+  for (let i = 0; i < 6; i++) ctx.fillRect(294, 555 + i * 37, 76, 20);
+  const x = -135 + 335 * Math.min(1, progresso * 2) + 500 * Math.max(0, (progresso - 0.88) / 0.12);
+  ctx.fillStyle = "#b32f44";
+  ctx.fillRect(x, 610, 136, 42);
+  ctx.fillRect(x + 29, 583, 68, 27);
+  ctx.fillStyle = "#bfdbe7";
+  ctx.fillRect(x + 35, 588, 55, 20);
+  for (const roda of [x + 28, x + 108]) {
+    ctx.fillStyle = "#13212a";
+    ctx.beginPath();
+    ctx.arc(roda, 654, 14, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = "#1d2a31";
+  ctx.fillRect(400, 367, 8, 174);
+  ctx.fillRect(385, 358, 38, 86);
+  const atravessando = progresso > 0.55;
+  ctx.fillStyle = atravessando ? "#55e49c" : "#ff5a66";
+  ctx.beginPath();
+  ctx.arc(404, atravessando ? 422 : 382, 10, 0, Math.PI * 2);
+  ctx.fill();
+  const y = 508 + 260 * Math.max(0, (progresso - 0.55) / 0.45);
+  const passo = atravessando ? 12 * Math.sin(progresso * Math.PI * 12) : 0;
+  ctx.strokeStyle = "#17395c";
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(332, y - 31);
+  ctx.lineTo(332, y - 12);
+  ctx.lineTo(325 + passo, y + 6);
+  ctx.moveTo(332, y - 12);
+  ctx.lineTo(339 - passo, y + 6);
+  ctx.stroke();
+  ctx.fillStyle = cena % 2 ? "#aa612e" : "#755746";
+  ctx.beginPath();
+  ctx.arc(332, y - 39, 8, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function tipoDeProducao(texto, projeto) {
@@ -364,7 +474,7 @@ function aprovacaoProducao(texto) {
     .replace(/^(?:ok|sim|certo|beleza) /, "")
     .replace(/^(?:eu )?(?:quero|preciso) que (?:voce )?/, "")
     .replace(/ (?:agora|por favor)$/, "");
-  return /^(?:aprovo|aprovado|execute|executar|pode (?:executar|criar|gerar|produzir|fazer|seguir|continuar|dar (?:sequencia|andamento))|vai em frente|manda ver)(?: (?:isso|a proposta|o roteiro|o video|o jingle|a musica|a melodia|o audio))?(?: agora)?$/.test(instrucao);
+  return /^(?:aprovo|aprovado|execute|executar|(?:pode|podia) (?:executar|criar|gerar|produzir|fazer|seguir|continuar|dar (?:sequencia|andamento))|vai em frente|manda ver)(?: (?:isso|a proposta|o roteiro|o video|o jingle|a musica|a melodia|o audio))?(?: agora| sim)?$/.test(instrucao);
 }
 
 function partituraValida(p) {
@@ -619,6 +729,11 @@ async function responderConversa(request, env, armazenamento) {
         texto: "O renderizador disponível produz um vídeo vertical de 15 segundos, com giro do vestido preto. Peça essa versão para iniciar a renderização.",
       }, { headers: { "Cache-Control": "no-store" } });
     }
+    if (pedidoDeVideo3D(pedido)) {
+      return Response.json({
+        texto: "O renderizador 3D do Aion tem um modelo de vestido preto com giro de 15 segundos. Para esse modelo, peça um vídeo 3D do vestido preto. Outros objetos e cenas 3D precisam de um renderizador compatível.",
+      }, { headers: { "Cache-Control": "no-store" } });
+    }
     const anterior = mensagens.at(-3)?.role === "user" ? mensagens.at(-3).content : "";
     const recuperandoMusica = aprovacaoProducao(pedido) && tipoDeProducao(anterior) === "musica";
     const projeto = ultimoVideo ? "video" : ultimaPartitura ? "musica" : null;
@@ -704,7 +819,7 @@ async function responderConversa(request, env, armazenamento) {
         if (!tipo) return typeof valor === "string" && valor.trim() && valor.length <= 12000 ? valor.trim() : null;
         const proposta = lerProposta(valor);
         return propostaValida(proposta) ? proposta : null;
-      });
+      }, { prazoMs: 35000 });
       const producao = tipo ? resultado : null;
       const headers = { "Cache-Control": "no-store" };
       if (trabalhoVideo && producao?.acao === "roteiro_video") {
@@ -745,6 +860,9 @@ async function responderConversa(request, env, armazenamento) {
       }
       return Response.json({ texto: resultado }, { headers });
     } catch (erro) {
+      if (erro?.name === "TimeoutError") {
+        return Response.json({ erro: "O modelo de conversa excedeu seu prazo. Use Repetir pedido para tentar novamente." }, { status: 504 });
+      }
       if (limiteCompartilhado(erro)) {
         return Response.json({ erro: "O Workers AI atingiu o limite disponível na conta." }, { status: 429 });
       }
@@ -1179,6 +1297,9 @@ function loginPage(clientId) {
   ${textoRoteiro.toString()}
   ${normalizarPedido.toString()}
   ${pedidoDeVestido3D.toString()}
+  ${pedidoDeVideo3D.toString()}
+  ${desenharVestido3D.toString()}
+  ${desenharTransito.toString()}
   ${tipoDeProducao.toString()}
   ${aprovacaoProducao.toString()}
   ${gerarMelodia.toString()}
@@ -2249,7 +2370,8 @@ function loginPage(clientId) {
       item.append(executar);
     }
 
-    async function gerarClipeDoRoteiro(item, body, record, roteiro, update) {
+    async function gerarClipeDoRoteiro(item, body, record, roteiro, update, visual) {
+      record.visual = visual;
       record.roteiroVideo = roteiro;
       apresentarRoteiro(item, roteiro);
       const segundos = roteiro.cenas.reduce((total, cena) => total + cena.segundos, 0);
@@ -2291,7 +2413,7 @@ function loginPage(clientId) {
         etapa = "Renderizar clipe";
         const { blob, extension } = await renderSample(roteiro.cenas.map(cena => cena.legenda),
           progress => { body.textContent = etapa + " · " + progress + "%"; },
-          null, signal, roteiro.cenas.map(cena => cena.segundos * 1000), contexto, falas);
+          null, signal, roteiro.cenas.map(cena => cena.segundos * 1000), contexto, falas, visual);
         etapa = "Disponibilizar arquivo";
         const url = URL.createObjectURL(blob);
         videoUrls.push(url);
@@ -2301,7 +2423,7 @@ function loginPage(clientId) {
         video.src = url;
         const baixar = document.createElement("a");
         baixar.href = url;
-        baixar.download = "aion-clipe." + extension;
+        baixar.download = (visual === "vestido-3d" ? "aion-vestido-3d" : "aion-clipe") + "." + extension;
         baixar.textContent = "Baixar clipe";
         const salvar = document.createElement("button");
         salvar.type = "button";
@@ -2319,7 +2441,9 @@ function loginPage(clientId) {
           }
         };
         item.append(video, baixar, salvar, estado);
-        update("Clipe de legendas " + (temNarracao ? "com narração Faber" : "sem narração")
+        const tipo = visual === "vestido-3d" ? "Giro 3D do vestido preto"
+          : visual === "transito" ? "Animação ilustrada de trânsito" : "Clipe de legendas";
+        update(tipo + (temNarracao ? " com narração Faber" : " sem narração")
           + " · " + segundos + " s · " + extension.toUpperCase() + ". Abra ou baixe o arquivo nesta sessão.");
       } catch (error) {
         record.tentarProposta = true;
@@ -2600,6 +2724,7 @@ function loginPage(clientId) {
       const revisaoDoVideo = revisaoComAprovacao && videoValido(respostaAnteriorDoProjeto?.roteiroVideo)
         && tipoDeProducao(revisaoComAprovacao[1], "video") === "video" ? revisaoComAprovacao[1] : null;
       const aprovou = aprovacaoProducao(request);
+      const pedidoAnterior = current[current.length - 4]?.text || "";
       const mensagemAnterior = current[current.length - 4];
       const recuperarJingle = !file && aprovou && !ultimaProposta
         && mensagemAnterior?.who === "Você" && tipoDeProducao(mensagemAnterior.text) === "musica";
@@ -2614,7 +2739,12 @@ function loginPage(clientId) {
         }
         const roteiro = ultimaProposta.roteiroVideo;
         if (videoValido(roteiro)) {
-          await gerarClipeDoRoteiro(item, body, record, roteiro, update);
+          if (ultimaProposta.visual !== "vestido-3d" && pedidoDeVideo3D(pedidoAnterior)) {
+            proporVestido3D(pedidoAnterior);
+            return;
+          }
+          await gerarClipeDoRoteiro(item, body, record, roteiro, update,
+            ultimaProposta.visual || (parseCommand(pedidoAnterior).trafficRequest ? "transito" : undefined));
           return;
         }
       }
@@ -2874,31 +3004,23 @@ function loginPage(clientId) {
           : "Arquivo adicionado nesta sessão. Use Baixar arquivo para salvar.");
         return;
       }
-      if (!file && pedidoDeVestido3D(request)) {
-        send.disabled = microphone.disabled = true;
-        body.textContent = "Solicitando o giro 3D do vestido…";
-        try {
-          const resposta = await fetch("/api/conversa", {
-            method: "POST",
-            headers: { Authorization: "Bearer " + credential, "Content-Type": "application/json" },
-            body: JSON.stringify({ mensagens: [{ role: "user", content: request }] }),
-            signal: AbortSignal.timeout(15000),
-          });
-          const dados = await resposta.json();
-          if (!resposta.ok) throw new Error(dados.erro || "Não foi possível iniciar a produção 3D.");
-          if (dados.status !== "solicitado") {
-            update(dados.texto);
-            return;
-          }
-          record.video3D = { acompanhamento: dados.acompanhamento, arquivo: dados.arquivo };
-          update("Pedido recebido. Vou consultar a disponibilidade do vídeo. O link privado abre o MP4 assim que ele for salvo.");
-          apresentarLinks3D(item, record.video3D, true);
-        } catch (erro) {
-          update(erro.message);
-        } finally {
-          send.disabled = microphone.disabled = false;
-        }
+      if (!file && (pedidoDeVestido3D(request) || pedidoDeVideo3D(request))) {
+        proporVestido3D(request);
         return;
+      }
+      function proporVestido3D(pedido) {
+        if (pedidoDeVestido3D(pedido) !== "renderizar") {
+          update("O Aion consegue renderizar o modelo 3D do vestido preto em um giro vertical de 15 segundos. Para produzir esse modelo, peça um vídeo 3D do vestido preto. Outros objetos e cenas 3D ainda precisam de um renderizador compatível.");
+          return;
+        }
+        record.visual = "vestido-3d";
+        record.roteiroVideo = { titulo: "Vestido preto em 3D", cenas: [{
+          segundos: 15, visual: "Giro contínuo do vestido preto, mostrando frente, laterais e costas.", fala: "", legenda: "Vestido preto em 3D",
+        }] };
+        record.proposta = true;
+        apresentarRoteiro(item, record.roteiroVideo);
+        apresentarAprovacao(item, record);
+        update("Proposta: giro contínuo do vestido preto em 3D, vertical, 15 segundos, sem narração. Toque em Executar proposta ou diga “pode executar”.");
       }
       const bentoRequest = /\\b(?:crie|cria|criar|faca|faz|fazer|gere|gerar|anime|animar|produza|quero)\\b/.test(command)
         && /\\b(?:desenho|animacao|video)\\b/.test(command)
@@ -2989,7 +3111,7 @@ function loginPage(clientId) {
             body: JSON.stringify({ mensagens, ultimaPartitura, ultimoVideo }),
             signal: sinalConversa,
           });
-          const payload = await response.json();
+          const payload = await response.json().catch(() => ({}));
           if (response.ok && payload.tarefa?.tipo === "jingle" && payload.tarefa.status === "concluida") {
             record.partitura = payload.partitura;
             record.tarefa = payload.tarefa;
@@ -3008,10 +3130,11 @@ function loginPage(clientId) {
               + "\\n\\nPeça um ajuste ou diga “pode executar” para gerar o áudio.");
           } else if (response.ok && videoValido(payload.roteiroVideo)) {
             record.roteiroVideo = payload.roteiroVideo;
+            record.visual = trafficRequest || respostaAnteriorDoProjeto?.visual === "transito" ? "transito" : undefined;
             record.proposta = true;
             if (revisaoDoVideo) {
               record.proposta = false;
-              await gerarClipeDoRoteiro(item, body, record, record.roteiroVideo, update);
+              await gerarClipeDoRoteiro(item, body, record, record.roteiroVideo, update, record.visual);
               return;
             }
             apresentarRoteiro(item, record.roteiroVideo);
@@ -3021,7 +3144,7 @@ function loginPage(clientId) {
           } else if (response.ok && payload.pedirGravacao) {
             update("Toque em Áudio para gravar a letra. Depois de parar a gravação, toque em Enviar. Para usar um áudio já gravado, toque em + e escolha Anexar áudio. Vou ajustar a clareza e o volume da sua gravação.");
           } else {
-            update(response.ok ? payload.texto : payload.erro);
+            update(response.ok ? payload.texto : payload.erro || "A execução falhou (HTTP " + response.status + "). Use Repetir pedido para tentar novamente.");
           }
         } catch {
           update(sinalConversa.aborted
@@ -3132,7 +3255,7 @@ function loginPage(clientId) {
     };
   }
 
-  async function renderSample(customScenes, onProgress, photo, signal, tempos, contexto, falas) {
+  async function renderSample(customScenes, onProgress, photo, signal, tempos, contexto, falas, visual) {
     const canvas = document.createElement("canvas");
     canvas.width = 540;
     canvas.height = 960;
@@ -3204,15 +3327,28 @@ function loginPage(clientId) {
             ctx.fillStyle = "rgba(0,0,0,.55)";
             ctx.fillRect(0, 0, 540, 960);
           }
+          if (visual === "vestido-3d") desenharVestido3D(ctx, elapsed / duration);
+          if (visual === "transito") {
+            const inicio = cortes[index - 1] ?? 0;
+            desenharTransito(ctx, (elapsed - inicio) / (cortes[index] - inicio), index);
+          }
           ctx.textAlign = "center";
           ctx.fillStyle = "#9dcfff";
           ctx.font = "bold 24px system-ui";
-          ctx.fillText("ADL MÍDIA", 270, 96);
-          ctx.fillStyle = "white";
-          ctx.font = "bold 32px system-ui";
-          scenes[index].forEach((line, row) => ctx.fillText(line, 270, 480 + (row - (scenes[index].length - 1) / 2) * 48, 460));
+          if (visual !== "vestido-3d") {
+            ctx.fillText("ADL MÍDIA", 270, 96);
+            if (visual === "transito") {
+              ctx.fillStyle = "#0b1429";
+              ctx.fillRect(0, 806, 540, 154);
+            }
+            ctx.fillStyle = "white";
+            ctx.font = "bold 32px system-ui";
+            const centro = visual === "transito" ? 856 : 480;
+            const altura = visual === "transito" ? 33 : 48;
+            scenes[index].forEach((line, row) => ctx.fillText(line, 270, centro + (row - (scenes[index].length - 1) / 2) * altura, 460));
+          }
           ctx.fillStyle = "#8bbcff";
-          ctx.fillRect(48, 885, 444 * elapsed / duration, 6);
+          ctx.fillRect(48, visual ? 930 : 885, 444 * elapsed / duration, 6);
           const progress = Math.min(100, Math.floor(elapsed / duration * 20) * 5);
           if (progress !== lastProgress) {
             lastProgress = progress;
