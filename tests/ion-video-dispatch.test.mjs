@@ -36,8 +36,8 @@ test("motores tentam alternativa em caso de falha e param no limite da conta", a
     return { choices: [{ message: { content: "Resultado" } }] };
   } };
   assert.equal(await executarMotor(ia, "conversa", {}, texto => texto || null), "Resultado");
-  assert.match(chamadas[0], /gemma-4/);
-  assert.match(chamadas[1], /glm-4/);
+  assert.match(chamadas[0], /glm-4.7/);
+  assert.match(chamadas[1], /gemma-4/);
   chamadas.length = 0;
   ia.run = async modelo => {
     chamadas.push(modelo);
@@ -115,6 +115,7 @@ test("conversa do proprietário executa vídeo e jingle e devolve estados reais"
   let consultasCotacao = 0;
   const arquivos = new Map();
   const cidadesConsultadas = [];
+  const buscasWikipedia = [];
   t.mock.method(globalThis, "fetch", async (url, opcoes) => {
     if (url === "https://www.googleapis.com/oauth2/v3/certs") return Response.json({ keys: [chave] });
     if (new URL(url).hostname === "olinda.bcb.gov.br") {
@@ -143,6 +144,10 @@ test("conversa do proprietário executa vídeo e jingle e devolve estados reais"
         time: ["2026-11-27", "2026-11-28"], temperature_2m_min: [16, 17],
         temperature_2m_max: [22, 23], precipitation_probability_max: [61, 35],
       } });
+    }
+    if (new URL(url).hostname === "pt.wikipedia.org") {
+      buscasWikipedia.push(new URL(url).searchParams.get("q"));
+      return Response.json({ pages: [{ title: "Animação", key: "Animação", description: "Técnica audiovisual" }] });
     }
     assert.match(url, /\/actions\/workflows\/aion-video-3d\.yml\/dispatches$/);
     pedidos.push(JSON.parse(opcoes.body));
@@ -188,6 +193,14 @@ test("conversa do proprietário executa vídeo e jingle e devolve estados reais"
   assert.equal(previsao.status, 200);
   assert.match((await previsao.json()).texto, /São Paulo \(28\/11\/2026\)[\s\S]*Open-Meteo/);
   assert.deepEqual(cidadesConsultadas, ["São Paulo"]);
+
+  const comandoPesquisa = "Aion, pesquise na internet sobre como criar vídeo de animação.";
+  assert.equal((await solicitar(comandoPesquisa, "outra@gmail.com")).status, 403);
+  assert.deepEqual(buscasWikipedia, []);
+  const pesquisa = await solicitar(comandoPesquisa);
+  assert.equal(pesquisa.status, 200);
+  assert.deepEqual(buscasWikipedia, ["como criar vídeo de animação"]);
+  assert.match((await pesquisa.json()).texto, /Resultados da Wikipédia[\s\S]*Técnica audiovisual/);
 
   const comando = "Aion, eu quero que você faça um vídeo 3D vestido preto duração de 15 segundos. O resultado esperado é um vídeo 3D vestido preto vertical com giro contínuo mostrando frente, lateral e costas.";
   assert.equal((await solicitar(comando, "outra@gmail.com")).status, 403);
@@ -374,4 +387,41 @@ test("retomada reconhece a mensagem anterior e mantém a escolha do modelo 3D", 
   assert.equal(montarContextoDaConversa(historico).at(-1).content, "Proposta do C4 Pallas");
   assert.equal(tituloDaDuracao(61000, true), "Trabalhando · 1 min 1 s");
   assert.equal(tituloDaDuracao(61000, false), "Tempo de execução · 1 min 1 s");
+});
+
+
+test("o primeiro modelo lento cede espaço ao segundo dentro do prazo total", async () => {
+  const chamadas = [];
+  const ia = { run: async modelo => {
+    chamadas.push(modelo);
+    if (chamadas.length === 1) return new Promise(resolve => setTimeout(() => resolve({ response: "tarde" }), 50));
+    return { response: "resposta do modelo alternativo" };
+  } };
+  const texto = await executarMotor(ia, "conversa", {}, v => v, { prazoMs: 100, prazoPorModeloMs: 5 });
+  assert.equal(texto, "resposta do modelo alternativo");
+  assert.equal(chamadas.length, 2);
+});
+
+test("pesquisa em português consulta uma fonte real e devolve os links sem chamar inferência", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const fonte = await readFile(new URL("../worker-ion/index.mjs", import.meta.url), "utf8");
+  const funcoes = fonte.slice(fonte.indexOf("const ORIGEM_WIKIPEDIA"), fonte.indexOf("async function consultarPrevisao"));
+  let chamada;
+  let dispo = true;
+  const { assuntoDaPesquisa, pesquisarWikipedia } = new Script(
+    funcoes + "\n({ assuntoDaPesquisa, pesquisarWikipedia });"
+  ).runInNewContext({ URL, AbortSignal, fetch: async url => {
+    chamada = new URL(url);
+    return dispo ? Response.json({ pages: [{ title: "Citroën C4", key: "Citroën_C4", description: "Modelo de automóvel" }] })
+      : new Response(null, { status: 503 });
+  } });
+  assert.equal(assuntoDaPesquisa("Aion, pesquise na internet sobre o C4 Pallas."), "o C4 Pallas");
+  assert.equal(assuntoDaPesquisa("procure pelo comando https://example.org"), "");
+  assert.equal(assuntoDaPesquisa("quero que me entregue o resultado"), "");
+  const resultado = await pesquisarWikipedia("C4 Pallas");
+  assert.equal(chamada.origin, "https://pt.wikipedia.org");
+  assert.equal(chamada.searchParams.get("q"), "C4 Pallas");
+  assert.equal(resultado.fontesPesquisa[0].url, "https://pt.wikipedia.org/wiki/Citro%C3%ABn_C4");
+  dispo = false;
+  assert.match((await pesquisarWikipedia("C4 Pallas")).erro, /não respondeu/);
 });

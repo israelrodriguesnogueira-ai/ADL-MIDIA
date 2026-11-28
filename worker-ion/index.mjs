@@ -925,7 +925,8 @@ async function responderConversa(request, env, armazenamento) {
     const recuperandoMusica = aprovacaoProducao(pedido) && tipoDeProducao(anterior) === "musica";
     const projeto = ultimoVideo ? "video" : ultimaPartitura ? "musica" : null;
     const tipo = recuperandoMusica ? "musica" : tipoDeProducao(pedido, projeto);
-    if (!tipo) {
+    const assunto = assuntoDaPesquisa(pedido);
+    if (!tipo || assunto) {
       if (pedidoDeCotacaoDolar(pedido)) {
         const texto = await consultarCotacaoDolar();
         const headers = { "Cache-Control": "no-store" };
@@ -935,6 +936,10 @@ async function responderConversa(request, env, armazenamento) {
       }
       const previsao = await consultarPrevisao(mensagens);
       if (previsao) return Response.json({ texto: previsao }, { headers: { "Cache-Control": "no-store" } });
+      if (assunto) {
+        const resultados = await pesquisarWikipedia(assunto);
+        return Response.json(resultados, { status: resultados.erro ? 502 : 200, headers: { "Cache-Control": "no-store" } });
+      }
     }
     if (!env.ION_AI || env.ION_VISION_FREE_ENABLED !== "true") {
       return Response.json({ erro: "Modelo de conversa aguardando ativação no plano gratuito." }, { status: 503 });
@@ -1006,7 +1011,7 @@ async function responderConversa(request, env, armazenamento) {
         if (!tipo) return typeof valor === "string" && valor.trim() && valor.length <= 12000 ? valor.trim() : null;
         const proposta = lerProposta(valor);
         return propostaValida(proposta) ? proposta : null;
-      }, { prazoMs: 35000 });
+      }, { prazoMs: 27000, prazoPorModeloMs: tipo ? 12000 : 8500 });
       const producao = tipo ? resultado : null;
       const headers = { "Cache-Control": "no-store" };
       if (trabalhoVideo && producao?.acao === "roteiro_video") {
@@ -1048,7 +1053,8 @@ async function responderConversa(request, env, armazenamento) {
       return Response.json({ texto: resultado }, { headers });
     } catch (erro) {
       if (erro?.name === "TimeoutError") {
-        return Response.json({ erro: "O modelo de conversa excedeu seu prazo. Use Repetir pedido para tentar novamente." }, { status: 504 });
+        console.warn(JSON.stringify({ event: "ion.inference_timeout", tarefa: tipo ? "proposta" : "conversa" }));
+        return Response.json({ erro: "Os modelos de conversa não concluíram este pedido a tempo. A cotação, a previsão e a busca na Wikipédia continuam disponíveis pelos seus comandos próprios." }, { status: 504 });
       }
       if (limiteCompartilhado(erro)) {
         return Response.json({ erro: "O Workers AI atingiu o limite disponível na conta." }, { status: 429 });
@@ -1057,6 +1063,48 @@ async function responderConversa(request, env, armazenamento) {
       return Response.json({ erro: "O núcleo de conversa está temporariamente indisponível." }, { status: 502 });
     }
   })(request);
+}
+
+const ORIGEM_WIKIPEDIA = "https://pt.wikipedia.org";
+
+function assuntoDaPesquisa(pedido) {
+  const limpo = pedido.trim().replace(/^(?:(?:ok|sim|aion|ion|por favor)[,\s]+)+/i, "");
+  const busca = /^(?:(?:você )?(?:pode|consegue) )?(?:pesquis[ae]|pesquisar|procure|procurar|busque|buscar)(?:\s+(?:para mim|pra mim|na (?:internet|web|wikip[eé]dia)))*/i.exec(limpo);
+  if (!busca || !/^[\s:,-]/.test(limpo.slice(busca[0].length))) return "";
+  const assunto = limpo.slice(busca[0].length).trim().replace(/^[\s:,-]+/, "")
+    .replace(/^(?:informaç(?:ão|ões) sobre|sobre)\s+/i, "").replace(/[?.!]+$/, "").trim();
+  return assunto.length >= 2 && assunto.length <= 180 && !/https?:\/\//i.test(assunto) ? assunto : "";
+}
+
+async function pesquisarWikipedia(assunto) {
+  const url = new URL("/w/rest.php/v1/search/page", ORIGEM_WIKIPEDIA);
+  url.searchParams.set("q", assunto);
+  url.searchParams.set("limit", "3");
+  try {
+    const resposta = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Aion/1.0 (https://github.com/israelrodriguesnogueira-ai/ADL-MIDIA)",
+      },
+      signal: AbortSignal.timeout(6500),
+    });
+    if (!resposta.ok) throw new Error("HTTP " + resposta.status);
+    const dados = await resposta.json();
+    if (!Array.isArray(dados.pages)) throw new Error("Resposta inesperada");
+    const fontes = dados.pages.slice(0, 3).flatMap(pagina => {
+      if (typeof pagina?.key !== "string" || typeof pagina?.title !== "string" || !pagina.key.trim() || !pagina.title.trim()) return [];
+      return [{
+        titulo: pagina.title.trim().slice(0, 160),
+        resumo: typeof pagina.description === "string" ? pagina.description.trim().slice(0, 200) : "",
+        url: ORIGEM_WIKIPEDIA + "/wiki/" + encodeURIComponent(pagina.key),
+      }];
+    });
+    if (!fontes.length) return { texto: "A Wikipédia em português não retornou artigos para “" + assunto + "”." };
+    const lista = fontes.map(({ titulo, resumo, url }) => titulo + (resumo ? " — " + resumo : "") + "\n" + url);
+    return { texto: "Resultados da Wikipédia em português para “" + assunto + "”\n\n" + lista.join("\n\n"), fontesPesquisa: fontes };
+  } catch {
+    return { erro: "A Wikipédia em português não respondeu à consulta. A busca pode ser repetida." };
+  }
 }
 
 async function consultarPrevisao(mensagens) {
@@ -1643,6 +1691,7 @@ function loginPage(clientId) {
       for (const entry of chat) {
         const { item } = message(entry.who, entry.text, entry);
         apresentarRetomada(item, entry);
+        apresentarFontesPesquisa(item, entry.fontesPesquisa);
         if (partituraValida(entry.partitura) && entry.versaoAudio) {
           try {
             apresentarPartitura(item, entry);
@@ -2569,6 +2618,23 @@ function loginPage(clientId) {
       item.append(abrir);
     }
 
+    function apresentarFontesPesquisa(item, fontes) {
+      if (!Array.isArray(fontes)) return;
+      const lista = document.createElement("ul");
+      for (const fonte of fontes.slice(0, 3)) {
+        if (typeof fonte?.titulo !== "string" || !/^https:\\/\\/pt\\.wikipedia\\.org\\/wiki\\/[A-Za-z0-9_%!~*'().-]+$/.test(fonte.url)) continue;
+        const link = document.createElement("a");
+        link.href = fonte.url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = fonte.titulo;
+        const linha = document.createElement("li");
+        linha.append(link);
+        lista.append(linha);
+      }
+      if (lista.childElementCount) item.append(lista);
+    }
+
     function apresentarAprovacao(item, entrada) {
       const executar = document.createElement("button");
       executar.type = "button";
@@ -3440,6 +3506,10 @@ function loginPage(clientId) {
             apresentarAprovacao(item, record);
             update(textoRoteiro(record.roteiroVideo)
               + "\\n\\nPeça um ajuste ou diga “pode executar” para aprovar este roteiro.");
+          } else if (response.ok && Array.isArray(payload.fontesPesquisa)) {
+            record.fontesPesquisa = payload.fontesPesquisa;
+            apresentarFontesPesquisa(item, record.fontesPesquisa);
+            update(payload.texto);
           } else if (response.ok && payload.pedirGravacao) {
             update("Toque em Áudio para gravar a letra. Depois de parar a gravação, toque em Enviar. Para usar um áudio já gravado, toque em + e escolha Anexar áudio. Vou ajustar a clareza e o volume da sua gravação.");
           } else {
