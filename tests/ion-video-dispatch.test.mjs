@@ -36,7 +36,7 @@ test("motores tentam alternativa em caso de falha e param no limite da conta", a
     return { choices: [{ message: { content: "Resultado" } }] };
   } };
   assert.equal(await executarMotor(ia, "conversa", {}, texto => texto || null), "Resultado");
-  assert.match(chamadas[0], /llama-3.1/);
+  assert.match(chamadas[0], /glm-4.7/);
   assert.match(chamadas[1], /gemma-4/);
   chamadas.length = 0;
   ia.run = async modelo => {
