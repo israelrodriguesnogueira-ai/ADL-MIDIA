@@ -347,7 +347,7 @@ function pedidoDeVestido3D(texto) {
 
 function pedidoDeVideo3D(texto) {
   const pedido = normalizarPedido(texto);
-  const produzir = /\b(?:crie|cria|criar|gere|gera|gerar|produza|produzir|faca|faz|fazer|renderize|renderizar|quero|preciso|gostaria|monte|anime)\b/.test(pedido);
+  const produzir = /\b(?:crie|cria|criar|gere|gera|gerar|produza|produzir|faca|faz|fazer|renderize|renderizar|quero|preciso|gostaria|monte|anime|apresente|mostre)\b/.test(pedido);
   return /\b3d\b/.test(pedido) && /\b(?:video|animacao|render|giro)\b/.test(pedido)
     && (produzir || /^(?:um )?(?:video|animacao|render|giro)\b/.test(pedido.trim()));
 }
