@@ -3186,7 +3186,7 @@ function loginPage(clientId) {
           : planoLocal.visual === "vestido-3d" ? "Giro contínuo do vestido preto, com frente, laterais e costas."
           : planoLocal.visual === "frase" ? "Clipe com a frase solicitada."
           : "Animação ilustrada de trânsito com três cenas.";
-        update(textoRoteiro(record.roteiroVideo) + "\n\n" + apresentacao
+        update(textoRoteiro(record.roteiroVideo) + "\\n\\n" + apresentacao
           + " Toque em Executar proposta ou diga “pode executar” para gerar o vídeo.");
         return;
       }
